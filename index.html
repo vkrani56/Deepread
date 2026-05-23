@@ -1327,11 +1327,15 @@ async function discoverPapers(){
 }
 
 function showDiscoverFallback(query){
+  const hosted = isHosted();
   const errEl = document.getElementById('discover-error');
   errEl.style.display='block';
   errEl.innerHTML=`
-    <strong>Direct API search is not available in this browser.</strong><br>
-    <span style="font-size:13px;opacity:.9;">This happens when opening the file locally on mobile or in restricted browsers. Use the links below to find papers manually, then paste their URLs into the Multi-paper synthesis tab.</span>
+    <strong>${hosted ? 'Search API unavailable' : 'Open the hosted version to enable search'}.</strong><br>
+    <span style="font-size:13px;opacity:.9;">${hosted
+      ? 'The Semantic Scholar and PubMed APIs could not be reached. This may be a temporary outage. Try again in a moment, or use the links below to find papers manually.'
+      : 'API search is blocked when opening the file locally. Open the tool from your GitHub Pages URL instead, or use the links below to find papers manually and paste their URLs into the Multi-paper synthesis tab.'
+    }</span>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.75rem;">
       <a href="https://scholar.google.com/scholar?q=${encodeURIComponent(query)}" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">Google Scholar ↗</a>
       <a href="https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(query)}&filter=simsearch2.ffrft" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">PubMed (open access) ↗</a>
@@ -1342,16 +1346,31 @@ function showDiscoverFallback(query){
 }
 
 async function fetchWithCORSFallback(url){
-  // Try direct first
+  // Try direct first (works when hosted, blocked on local files)
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, {mode:'cors'});
     if(res.ok) return res;
-  } catch(e){ /* fall through to proxy */ }
-  // Try CORS proxy
-  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-  const res = await fetch(proxyUrl);
-  if(!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res;
+  } catch(e){ /* fall through */ }
+
+  // Try multiple CORS proxies in sequence
+  const proxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://proxy.cors.sh/${url}`
+  ];
+
+  for(const proxyUrl of proxies){
+    try {
+      const res = await fetch(proxyUrl);
+      if(res.ok) return res;
+    } catch(e){ continue; }
+  }
+
+  throw new Error('All connection attempts failed');
+}
+
+function isHosted(){
+  return location.protocol === 'https:' || location.protocol === 'http:';
 }
 
 async function searchSemanticScholar(query, yearsBack, limit){
