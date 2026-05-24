@@ -1375,16 +1375,19 @@ async function fetchJSON(url){
       const data = await res.json();
       return data;
     }
-  } catch(e){ /* fall through */ }
+  } catch(e){ console.log('Direct fetch failed for', url, e.message); }
 
   // Try allorigins proxy
   try {
-    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl);
     if(res.ok){
       const wrapper = await res.json();
-      return JSON.parse(wrapper.contents);
+      if(wrapper.contents){
+        return JSON.parse(wrapper.contents);
+      }
     }
-  } catch(e){ /* fall through */ }
+  } catch(e){ console.log('Proxy fetch failed for', url, e.message); }
 
   throw new Error('Could not reach API');
 }
@@ -1394,12 +1397,23 @@ function isHosted(){
 }
 
 async function searchEuropePMC(query, yearsBack, limit){
-  const yearFilter = yearsBack > 0 ? ` AND FIRST_PDATE:[${new Date().getFullYear()-yearsBack}-01-01 TO ${new Date().getFullYear()}-12-31]` : '';
-  // Use relevance sort, not citation sort — citation sort returns unrelated high-cited papers
-  const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query+yearFilter)}&resultType=core&pageSize=${Math.min(limit,25)}&format=json&sort=RELEVANCE`;
+  // Build query — year filter uses PUB_YEAR not FIRST_PDATE for better compatibility
+  const currentYear = new Date().getFullYear();
+  const yearFilter = yearsBack > 0 ? ` AND (PUB_YEAR:[${currentYear-yearsBack} TO ${currentYear}])` : '';
+  const fullQuery = query + yearFilter;
+  const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(fullQuery)}&resultType=core&pageSize=${Math.min(limit,25)}&format=json&sort=RELEVANCE`;
 
-  const data = await fetchJSON(url);
-  return (data.resultList?.result||[]).map(p=>({
+  let data = await fetchJSON(url);
+  let results = data.resultList?.result||[];
+
+  // If year filter returned nothing, try without it
+  if(results.length === 0 && yearsBack > 0){
+    const urlNoYear = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query)}&resultType=core&pageSize=${Math.min(limit,25)}&format=json&sort=RELEVANCE`;
+    data = await fetchJSON(urlNoYear);
+    results = data.resultList?.result||[];
+  }
+
+  return results.map(p=>({
     source: 'europe_pmc',
     title: p.title||'Untitled',
     year: p.pubYear||'?',
