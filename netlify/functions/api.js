@@ -87,20 +87,37 @@ exports.handler = async (event) => {
         const fields = 'title,year,citationCount,authors,publicationVenue,isOpenAccess,openAccessPdf,externalIds,abstract';
         const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${Math.min(limit, 50)}&fields=${fields}${year_filter || ''}`;
 
-        const response = await fetch(url);
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) {
+          // Return empty rather than error so other sources still work
+          console.error(`Semantic Scholar HTTP ${response.status}`);
+          return { statusCode: 200, headers: corsHeaders(origin), body: JSON.stringify({ data: [] }) };
+        }
         const data = await response.json();
-        if (!response.ok) throw new Error(`Semantic Scholar error ${response.status}`);
         return { statusCode: 200, headers: corsHeaders(origin), body: JSON.stringify(data) };
       }
 
-      // Europe PMC search
+      // Europe PMC search — retries without year filter if needed
       case 'europe_pmc': {
-        const { query, limit = 15 } = body;
-        const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query)}&resultType=core&pageSize=${Math.min(limit, 25)}&format=json&sort=RELEVANCE`;
+        const { query, base_query, limit = 15 } = body;
 
-        const response = await fetch(url);
-        const data = await response.json();
-        if (!response.ok) throw new Error(`Europe PMC error ${response.status}`);
+        const trySearch = async (q) => {
+          const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(q)}&resultType=core&pageSize=${Math.min(limit, 25)}&format=json&sort=RELEVANCE`;
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`Europe PMC error ${response.status}`);
+          return await response.json();
+        };
+
+        let data = await trySearch(query);
+
+        // If year-filtered query returned nothing, retry with base query
+        if ((!data.resultList?.result?.length) && base_query && base_query !== query) {
+          console.log('Europe PMC: retrying without year filter');
+          data = await trySearch(base_query);
+        }
+
         return { statusCode: 200, headers: corsHeaders(origin), body: JSON.stringify(data) };
       }
 
