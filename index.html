@@ -547,7 +547,7 @@ window.onload = () => {
     fetch(API_ENDPOINT, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action:'auth', password: sessionPassword})
+      body: JSON.stringify({action:'auth', password: sessionPassword || sessionStorage.getItem('dr_password') || ''})
     }).then(r=>r.json()).then(d=>{
       if(d.ok){
         document.getElementById('api-banner').style.display='none';
@@ -678,10 +678,11 @@ async function fetchURL(url){
   } else if(url.includes('arxiv.org/abs/')){
     apiUrl = `https://export.arxiv.org/abs/${url.split('/abs/')[1]}`;
   }
+  const pw = sessionPassword || sessionStorage.getItem('dr_password') || '';
   const res = await fetch(API_ENDPOINT, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ action: 'proxy_url', password: sessionPassword, url: apiUrl })
+    body: JSON.stringify({ action: 'proxy_url', password: pw, url: apiUrl })
   });
   const data = await res.json();
   const text = (data.contents||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().substring(0,12000);
@@ -692,6 +693,7 @@ async function fetchURL(url){
 async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 async function callClaude(messages, maxTokens=4000, retries=3) {
+  const pw = sessionPassword || sessionStorage.getItem('dr_password') || '';
   for(let attempt=1; attempt<=retries; attempt++){
     try {
       const res = await fetch(API_ENDPOINT, {
@@ -699,7 +701,7 @@ async function callClaude(messages, maxTokens=4000, retries=3) {
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
           action: 'claude',
-          password: sessionPassword,
+          password: pw,
           model: 'claude-opus-4-5',
           max_tokens: maxTokens,
           system: `You are a senior research scientist with 20+ years critically evaluating scientific literature. You read papers the way a seasoned researcher does — scrutinizing actual Results data, statistics, and whether Discussion sections honestly reflect findings. You are rigorous, honest, and preserve nuance. Respond ONLY with valid JSON. No preamble, no markdown fences.`,
@@ -960,7 +962,7 @@ async function askQuestion(){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         action:'claude',
-        password: sessionPassword,
+        password: sessionPassword || sessionStorage.getItem('dr_password') || '',
         model:'claude-opus-4-5',
         max_tokens:800,
         system:`You are a scientific research assistant answering questions about a specific paper. Answer based only on what is in the paper. Be specific and cite actual findings. If the paper doesn't contain enough information to answer, say so honestly. Write in clear prose, not JSON.`,
@@ -1248,7 +1250,7 @@ async function askPaperQuestion(paperIndex, q){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         action:'claude',
-        password: sessionPassword,
+        password: sessionPassword || sessionStorage.getItem('dr_password') || '',
         model:'claude-opus-4-5',
         max_tokens:700,
         system:`You are answering a question about a specific paper in a multi-paper synthesis. Answer based on what is known about this paper from the synthesis context. Be specific and direct. If the information isn't available, say so. Write in clear prose.`,
@@ -1286,7 +1288,7 @@ async function askMultiQuestion(){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         action:'claude',
-        password: sessionPassword,
+        password: sessionPassword || sessionStorage.getItem('dr_password') || '',
         model:'claude-opus-4-5',
         max_tokens:800,
         system:`You are a scientific research assistant answering questions about a synthesis of multiple papers. Answer based only on what is in the papers provided. Be specific, cite which papers support which claims. If the papers don't contain enough to answer fully, say so. Write in clear prose.`,
@@ -1415,17 +1417,18 @@ async function fetchJSON(url){
   const res = await fetch(API_ENDPOINT, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ action: 'proxy_url', password: sessionPassword, url })
+    body: JSON.stringify({ action: 'proxy_url', password: sessionPassword || sessionStorage.getItem('dr_password') || '', url })
   });
   if(!res.ok) throw new Error(`Server error ${res.status}`);
   return await res.json();
 }
 
 async function serverSearch(action, params){
+  const pw = sessionPassword || sessionStorage.getItem('dr_password') || '';
   const res = await fetch(API_ENDPOINT, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ action, password: sessionPassword, ...params })
+    body: JSON.stringify({ action, password: pw, ...params })
   });
   if(!res.ok) throw new Error(`Search error ${res.status}`);
   return await res.json();
