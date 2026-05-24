@@ -1293,47 +1293,69 @@ async function discoverPapers(){
 
   const statusEl = document.getElementById('discover-status');
   statusEl.style.display='block';
-  statusEl.textContent = 'Searching Semantic Scholar...';
+  statusEl.textContent = 'Connecting to Europe PMC and Semantic Scholar...';
 
-  try {
-    // Run both searches independently — one failing doesn't kill the other
-    const [ssResults, pmResults] = await Promise.allSettled([
-      searchSemanticScholar(query, yearsBack, Math.ceil(limit*1.5)),
-      searchPubMed(query, yearsBack, Math.ceil(limit*0.5))
-    ]);
+  // Run all three searches independently
+  const [epmcSettled, ssSettled, pmSettled] = await Promise.allSettled([
+    searchEuropePMC(query, yearsBack, Math.ceil(limit*0.6)),
+    searchSemanticScholar(query, yearsBack, Math.ceil(limit*0.6)),
+    searchPubMed(query, yearsBack, Math.ceil(limit*0.3))
+  ]);
 
-    const ss = ssResults.status==='fulfilled' ? ssResults.value : [];
-    const pm = pmResults.status==='fulfilled' ? pmResults.value : [];
+  const epmc = epmcSettled.status==='fulfilled' ? epmcSettled.value : [];
+  const ss = ssSettled.status==='fulfilled' ? ssSettled.value : [];
+  const pm = pmSettled.status==='fulfilled' ? pmSettled.value : [];
+  const epmcError = epmcSettled.status==='rejected' ? epmcSettled.reason?.message : null;
+  const ssError = ssSettled.status==='rejected' ? ssSettled.reason?.message : null;
+  const pmError = pmSettled.status==='rejected' ? pmSettled.reason?.message : null;
 
-    if(ss.length===0 && pm.length===0){
-      // Both failed — show manual search fallback
-      statusEl.style.display='none';
-      showDiscoverFallback(query);
-      return;
-    }
+  const sourceStatus = [];
+  if(epmc.length>0) sourceStatus.push(`Europe PMC: ${epmc.length}`);
+  else if(epmcError) sourceStatus.push(`Europe PMC: failed`);
+  if(ss.length>0) sourceStatus.push(`Semantic Scholar: ${ss.length}`);
+  else if(ssError) sourceStatus.push(`Semantic Scholar: failed`);
+  if(pm.length>0) sourceStatus.push(`PubMed: ${pm.length}`);
+  else if(pmError) sourceStatus.push(`PubMed: failed`);
 
-    const sourcesUsed = [ss.length>0&&'Semantic Scholar', pm.length>0&&'PubMed'].filter(Boolean).join(' + ');
-    statusEl.textContent = `Merging ${ss.length + pm.length} results from ${sourcesUsed}...`;
+  console.log('Discovery results:', sourceStatus.join(' | '));
 
-    discoverAllResults = mergeResults(ss, pm);
-    statusEl.style.display='none';
-    document.getElementById('discover-results').style.display='block';
-    renderDiscoverResults();
+  const bothFailed = epmcError && ssError && pmError;
+  const totalResults = epmc.length + ss.length + pm.length;
 
-  } catch(e){
-    statusEl.style.display='none';
-    showDiscoverFallback(query);
+  statusEl.style.display='none';
+
+  if(bothFailed){
+    // Both APIs actually errored — show fallback
+    showDiscoverFallback(query, `${ssError} / ${pmError}`);
+    return;
   }
+
+  if(totalResults === 0){
+    // APIs worked but no results — show helpful message not an error
+    const errEl = document.getElementById('discover-error');
+    errEl.style.display='block';
+    errEl.innerHTML=`<strong>No papers found</strong> for "${query}" in the selected time range.<br>
+      <span style="font-size:13px;">Try: broader search terms, a longer time range, or "All time". ${sourceStatus.join(' · ')}</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.75rem;">
+        <a href="https://scholar.google.com/scholar?q=${encodeURIComponent(query)}" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">Try Google Scholar ↗</a>
+        <a href="https://www.semanticscholar.org/search?q=${encodeURIComponent(query)}&sort=Relevance" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">Try Semantic Scholar ↗</a>
+      </div>`;
+    return;
+  }
+
+  discoverAllResults = mergeResults([...epmc, ...ss, ...pm]);
+  document.getElementById('discover-results').style.display='block';
+  renderDiscoverResults();
 }
 
-function showDiscoverFallback(query){
+function showDiscoverFallback(query, errorDetail=''){
   const hosted = isHosted();
   const errEl = document.getElementById('discover-error');
   errEl.style.display='block';
   errEl.innerHTML=`
     <strong>${hosted ? 'Search API unavailable' : 'Open the hosted version to enable search'}.</strong><br>
     <span style="font-size:13px;opacity:.9;">${hosted
-      ? 'The Semantic Scholar and PubMed APIs could not be reached. This may be a temporary outage. Try again in a moment, or use the links below to find papers manually.'
+      ? `The Semantic Scholar and PubMed APIs could not be reached.${errorDetail?' ('+errorDetail+')':''} Try again in a moment, or use the links below to find papers manually.`
       : 'API search is blocked when opening the file locally. Open the tool from your GitHub Pages URL instead, or use the links below to find papers manually and paste their URLs into the Multi-paper synthesis tab.'
     }</span>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.75rem;">
@@ -1345,42 +1367,61 @@ function showDiscoverFallback(query){
     <div style="margin-top:.75rem;font-size:13px;color:var(--muted);">Once you find papers, copy their URLs and paste them into <strong>Multi-paper synthesis → Add URL</strong>.</div>`;
 }
 
-async function fetchWithCORSFallback(url){
-  // Try direct first (works when hosted, blocked on local files)
+async function fetchJSON(url){
+  // Try direct fetch first
   try {
-    const res = await fetch(url, {mode:'cors'});
-    if(res.ok) return res;
+    const res = await fetch(url);
+    if(res.ok){
+      const data = await res.json();
+      return data;
+    }
   } catch(e){ /* fall through */ }
 
-  // Try multiple CORS proxies in sequence
-  const proxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    `https://proxy.cors.sh/${url}`
-  ];
+  // Try allorigins proxy
+  try {
+    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+    if(res.ok){
+      const wrapper = await res.json();
+      return JSON.parse(wrapper.contents);
+    }
+  } catch(e){ /* fall through */ }
 
-  for(const proxyUrl of proxies){
-    try {
-      const res = await fetch(proxyUrl);
-      if(res.ok) return res;
-    } catch(e){ continue; }
-  }
-
-  throw new Error('All connection attempts failed');
+  throw new Error('Could not reach API');
 }
 
 function isHosted(){
   return location.protocol === 'https:' || location.protocol === 'http:';
 }
 
+async function searchEuropePMC(query, yearsBack, limit){
+  // Europe PMC has excellent CORS support and is free
+  const yearFilter = yearsBack > 0 ? ` AND FIRST_PDATE:[${new Date().getFullYear()-yearsBack}-01-01 TO ${new Date().getFullYear()}-12-31]` : '';
+  const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query+yearFilter)}&resultType=core&pageSize=${Math.min(limit,25)}&format=json&sort=CITED desc`;
+
+  const data = await fetchJSON(url);
+  return (data.resultList?.result||[]).map(p=>({
+    source: 'europe_pmc',
+    title: p.title||'Untitled',
+    year: p.pubYear||'?',
+    authors: p.authorString ? p.authorString.substring(0,80)+(p.authorString.length>80?'...':'') : '—',
+    citations: p.citedByCount||0,
+    venue: p.journalTitle||p.bookTitle||'',
+    isOpenAccess: p.isOpenAccess==='Y',
+    pdfUrl: p.pmcid ? `https://europepmc.org/articles/${p.pmcid}/pdf/` : null,
+    doi: p.doi||null,
+    pmid: p.pmid||null,
+    abstract: p.abstractText||'',
+    pmcId: p.pmcid||null,
+    epmc_id: p.id||null
+  }));
+}
+
 async function searchSemanticScholar(query, yearsBack, limit){
   const yearFilter = yearsBack > 0 ? `&year=${new Date().getFullYear()-yearsBack}-` : '';
   const fields = 'title,year,citationCount,authors,publicationVenue,isOpenAccess,openAccessPdf,externalIds,abstract';
-  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${Math.min(limit,100)}&fields=${fields}${yearFilter}`;
+  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${Math.min(limit,50)}&fields=${fields}${yearFilter}`;
 
-  const res = await fetchWithCORSFallback(url);
-  const data = await res.json();
-
+  const data = await fetchJSON(url);
   return (data.data||[]).map(p=>({
     source: 'semantic_scholar',
     title: p.title||'Untitled',
@@ -1398,22 +1439,16 @@ async function searchSemanticScholar(query, yearsBack, limit){
 }
 
 async function searchPubMed(query, yearsBack, limit){
-  // Add free full text filter — only returns papers with PMC full text
   const oaFilter = '&filter=simsearch2.ffrft';
   const dateFilter = yearsBack > 0 ? `&datetype=pdat&reldate=${yearsBack*365}` : '';
   const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=${Math.min(limit*2,100)}&retmode=json&sort=relevance${dateFilter}${oaFilter}`;
 
-  const searchRes = await fetchWithCORSFallback(searchUrl);
-  if(!searchRes.ok) throw new Error(`PubMed search: HTTP ${searchRes.status}`);
-  const searchData = await searchRes.json();
+  const searchData = await fetchJSON(searchUrl);
   const pmids = searchData.esearchresult?.idlist||[];
   if(pmids.length===0) return [];
 
-  // Step 2: Fetch summaries for those PMIDs
   const summaryUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${pmids.join(',')}&retmode=json`;
-  const summaryRes = await fetchWithCORSFallback(summaryUrl);
-  if(!summaryRes.ok) return [];
-  const summaryData = await summaryRes.json();
+  const summaryData = await fetchJSON(summaryUrl);
 
   return pmids.map(pmid=>{
     const p = summaryData.result?.[pmid];
@@ -1427,7 +1462,7 @@ async function searchPubMed(query, yearsBack, limit){
       authors,
       citations: 0,
       venue: p.source||'',
-      isOpenAccess: hasPMC, // PMC = free full text
+      isOpenAccess: hasPMC,
       pdfUrl: hasPMC ? `https://www.ncbi.nlm.nih.gov/pmc/articles/${p.pmc}/pdf/` : null,
       doi: p.articleids?.find(a=>a.idtype==='doi')?.value||null,
       pmid,
@@ -1437,28 +1472,16 @@ async function searchPubMed(query, yearsBack, limit){
   }).filter(Boolean);
 }
 
-function mergeResults(ssResults, pmResults){
+function mergeResults(allResults){
   const seen = new Set();
   const merged = [];
-
-  // Add Semantic Scholar results first (they have citation counts)
-  for(const p of ssResults){
-    const key = p.title.toLowerCase().substring(0,40);
-    if(!seen.has(key)){
+  for(const p of allResults){
+    const key = (p.title||'').toLowerCase().replace(/[^a-z0-9]/g,'').substring(0,35);
+    if(key && !seen.has(key)){
       seen.add(key);
       merged.push(p);
     }
   }
-
-  // Add PubMed results not already in SS
-  for(const p of pmResults){
-    const key = p.title.toLowerCase().substring(0,40);
-    if(!seen.has(key)){
-      seen.add(key);
-      merged.push(p);
-    }
-  }
-
   return merged;
 }
 
