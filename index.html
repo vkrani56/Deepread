@@ -170,10 +170,18 @@
 
 <div class="main">
 
-  <div class="api-banner" id="api-banner">
-    <strong>Setup required:</strong> Enter your Anthropic API key. Stays in your browser only.
-    <input type="password" id="api-key" placeholder="sk-ant-..." oninput="saveKey()" />
+  <div class="api-banner" id="api-banner" style="background:var(--accent-light);border-color:#6BAD8A;color:#1A5C2A;">
+    <strong>Deep Read</strong> — Research nuance analyzer · Enter your access password to begin.
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <input type="password" id="access-password" placeholder="Access password..." style="flex:1;font-family:'DM Mono',monospace;font-size:13px;padding:8px 12px;border:1px solid #6BAD8A;border-radius:6px;background:#FFF;color:var(--text);" onkeydown="if(event.key==='Enter')verifyPassword()" />
+      <button onclick="verifyPassword()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">Enter</button>
+    </div>
+    <div id="password-error" style="display:none;margin-top:6px;font-size:12px;color:var(--red);"></div>
   </div>
+
+  <!-- Main app — hidden until password verified -->
+  <div id="app-content" style="display:none;"></div>
+  <div id="app-shell" style="display:none;">
 
   <!-- ===== SINGLE PAPER MODE ===== -->
   <div class="mode-panel active" id="mode-single">
@@ -461,6 +469,7 @@
   </div>
 
 </div>
+</div><!-- end app-shell -->
 
 <style>
   /* Discover mode styles */
@@ -499,21 +508,55 @@ let pdfFile = null;
 let currentInput = 'pdf';
 let multiPapers = []; // [{name, file}]
 
-// ── API KEY ──────────────────────────────────────────────
-function saveKey() {
-  const k = document.getElementById('api-key').value;
-  if (k.startsWith('sk-')) {
-    localStorage.setItem('anthropic_key', k);
-    const b = document.getElementById('api-banner');
-    b.style.background='#EBF2EE'; b.style.borderColor='#6BAD8A'; b.style.color='#1A5C2A';
+// ── PASSWORD & AUTH ───────────────────────────────────────
+const API_ENDPOINT = '/.netlify/functions/api';
+let sessionPassword = sessionStorage.getItem('dr_password') || '';
+
+async function verifyPassword(){
+  const pw = document.getElementById('access-password').value.trim();
+  if(!pw){ return; }
+  const errEl = document.getElementById('password-error');
+  errEl.style.display='none';
+
+  try {
+    const res = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'auth', password: pw })
+    });
+    const data = await res.json();
+    if(res.ok && data.ok){
+      sessionPassword = pw;
+      sessionStorage.setItem('dr_password', pw);
+      document.getElementById('api-banner').style.display='none';
+      document.getElementById('app-shell').style.display='block';
+    } else {
+      errEl.style.display='block';
+      errEl.textContent = 'Incorrect password. Please try again.';
+      document.getElementById('access-password').value='';
+    }
+  } catch(e){
+    errEl.style.display='block';
+    errEl.textContent = 'Could not connect to server. Check your internet connection.';
   }
 }
+
 window.onload = () => {
-  const k = localStorage.getItem('anthropic_key');
-  if (k) {
-    document.getElementById('api-key').value = k;
-    const b = document.getElementById('api-banner');
-    b.style.background='#EBF2EE'; b.style.borderColor='#6BAD8A'; b.style.color='#1A5C2A';
+  // If already authenticated this session, skip password
+  if(sessionPassword){
+    fetch(API_ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'auth', password: sessionPassword})
+    }).then(r=>r.json()).then(d=>{
+      if(d.ok){
+        document.getElementById('api-banner').style.display='none';
+        document.getElementById('app-shell').style.display='block';
+      } else {
+        sessionStorage.removeItem('dr_password');
+        sessionPassword='';
+      }
+    }).catch(()=>{});
   }
 };
 
@@ -628,62 +671,66 @@ async function extractPDFText(file) {
 }
 
 async function fetchURL(url){
-  let apiUrl=url;
+  let apiUrl = url;
   if(url.includes('pubmed.ncbi.nlm.nih.gov')){
-    const pmid=url.match(/\/(\d+)/)?.[1];
-    if(pmid) apiUrl=`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=text`;
+    const pmid = url.match(/\/(\d+)/)?.[1];
+    if(pmid) apiUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=text`;
   } else if(url.includes('arxiv.org/abs/')){
-    apiUrl=`https://export.arxiv.org/abs/${url.split('/abs/')[1]}`;
+    apiUrl = `https://export.arxiv.org/abs/${url.split('/abs/')[1]}`;
   }
-  const res=await fetch(apiUrl);
-  const text=await res.text();
-  return {text:text.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().substring(0,12000),images:[]};
+  const res = await fetch(API_ENDPOINT, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: 'proxy_url', password: sessionPassword, url: apiUrl })
+  });
+  const data = await res.json();
+  const text = (data.contents||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().substring(0,12000);
+  return { text, images: [] };
 }
 
 // ── CLAUDE API ───────────────────────────────────────────
 async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 async function callClaude(messages, maxTokens=4000, retries=3) {
-  const apiKey=localStorage.getItem('anthropic_key');
-  if(!apiKey) throw new Error('No API key found. Please enter your Anthropic API key at the top.');
-  const SYSTEM=`You are a senior research scientist with 20+ years critically evaluating scientific literature. You read papers the way a seasoned researcher does — scrutinizing actual Results data, statistics, and whether Discussion sections honestly reflect findings. You are rigorous, honest, and preserve nuance. Respond ONLY with valid JSON. No preamble, no markdown fences.`;
-
   for(let attempt=1; attempt<=retries; attempt++){
     try {
-      const res=await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body:JSON.stringify({model:'claude-opus-4-5',max_tokens:maxTokens,system:SYSTEM,messages})
+      const res = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          action: 'claude',
+          password: sessionPassword,
+          model: 'claude-opus-4-5',
+          max_tokens: maxTokens,
+          system: `You are a senior research scientist with 20+ years critically evaluating scientific literature. You read papers the way a seasoned researcher does — scrutinizing actual Results data, statistics, and whether Discussion sections honestly reflect findings. You are rigorous, honest, and preserve nuance. Respond ONLY with valid JSON. No preamble, no markdown fences.`,
+          messages
+        })
       });
+
       if(res.status===429){
         const wait = attempt * 8000;
-        updateStatus(`Rate limit hit — waiting ${wait/1000}s before retry ${attempt}/${retries}...`);
+        updateStatus(`Rate limit — waiting ${wait/1000}s...`);
         await sleep(wait);
         continue;
       }
-      if(res.status===401) throw new Error('Invalid API key. Please check your key at console.anthropic.com and re-enter it.');
-      if(res.status===402) throw new Error('Insufficient API credits. Please add credits at console.anthropic.com → Billing.');
+      if(res.status===401) throw new Error('Session expired. Please refresh the page and re-enter your password.');
       if(!res.ok){
-        const e=await res.json().catch(()=>({error:{message:`HTTP ${res.status}`}}));
+        const e = await res.json().catch(()=>({error:{message:`HTTP ${res.status}`}}));
         if(attempt<retries){ await sleep(attempt*3000); continue; }
-        throw new Error(`API error (${res.status}): ${e.error?.message||'Unknown error'}`);
+        throw new Error(e.error?.message || `Server error ${res.status}`);
       }
-      const data=await res.json();
-      const raw=data.content.map(b=>b.text||'').join('');
-      const clean=raw.replace(/```json|```/g,'').trim();
+
+      const data = await res.json();
+      const raw = data.content.map(b=>b.text||'').join('');
+      const clean = raw.replace(/```json|```/g,'').trim();
       try { return JSON.parse(clean); }
       catch(parseErr){
         if(attempt<retries){ await sleep(2000); continue; }
-        throw new Error('Could not parse API response as JSON. The model may have returned unexpected output.');
+        throw new Error('Could not parse response. Please try again.');
       }
     } catch(e){
       if(e.message.includes('fetch')||e.message.includes('network')||e.message.includes('Failed')){
-        if(attempt<retries){
-          updateStatus(`Network error — retrying (${attempt}/${retries})...`);
-          await sleep(attempt*4000);
-          continue;
-        }
-        throw new Error('Network error: Could not reach Anthropic API. Check your internet connection. If using a local HTML file, your browser may be blocking the request — try opening Chrome with web security disabled or use a different browser.');
+        if(attempt<retries){ updateStatus(`Network error — retrying...`); await sleep(attempt*4000); continue; }
       }
       throw e;
     }
@@ -702,13 +749,13 @@ function showError(id, msg){
   const el=document.getElementById(id);
   if(!el) return;
   el.style.display='block';
-  el.innerHTML=`<strong>Error:</strong> ${msg}<br><span style="font-size:13px;opacity:.8;margin-top:4px;display:block;">If this is a network error, try: (1) re-entering your API key, (2) checking credits at console.anthropic.com, (3) waiting 30 seconds and retrying.</span>`;
+  el.innerHTML=`<strong>Error:</strong> ${msg}<br><span style="font-size:13px;opacity:.8;margin-top:4px;display:block;">If this persists, try refreshing the page or waiting 30 seconds and retrying.</span>`;
 }
 
 // ── SINGLE PAPER ANALYZE ─────────────────────────────────
 async function analyze(){
-  const apiKey=localStorage.getItem('anthropic_key');
-  if(!apiKey){alert('Please enter your Anthropic API key.');return;}
+  
+  
   const domain=document.getElementById('domain').value;
   const focusQ=document.getElementById('focus-q').value;
   const analyzeFigures=document.getElementById('analyze-figures').checked;
@@ -897,8 +944,8 @@ function askQuestionText(q){
 async function askQuestion(){
   const q=document.getElementById('ask-input').value.trim();
   if(!q) return;
-  const apiKey=localStorage.getItem('anthropic_key');
-  if(!apiKey){alert('Please enter your API key.');return;}
+  
+  
   const answerEl=document.getElementById('ask-answer');
   answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-loading">Thinking...</div>`;
   answerEl.classList.add('visible');
@@ -908,24 +955,16 @@ async function askQuestion(){
   const domain=window._currentDomain||'science';
 
   try {
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
+    const res=await fetch(API_ENDPOINT,{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
+        action:'claude',
+        password: sessionPassword,
         model:'claude-opus-4-5',
         max_tokens:800,
         system:`You are a scientific research assistant answering questions about a specific paper. Answer based only on what is in the paper. Be specific and cite actual findings. If the paper doesn't contain enough information to answer, say so honestly. Write in clear prose, not JSON.`,
-        messages:[{role:'user',content:[{type:'text',text:`Domain: ${domain}
-
-PAPER TEXT:
-${paperText.substring(0,8000)}
-
-ANALYSIS SUMMARY:
-${summary.substring(0,1500)}
-
-Question: ${q}
-
-Give a focused, direct answer in 2-4 paragraphs.`}]}]
+        messages:[{role:'user',content:[{type:'text',text:`Domain: ${domain}\n\nPAPER TEXT:\n${paperText.substring(0,8000)}\n\nANALYSIS SUMMARY:\n${summary.substring(0,1500)}\n\nQuestion: ${q}\n\nGive a focused, direct answer in 2-4 paragraphs.`}]}]
       })
     });
     const data=await res.json();
@@ -939,8 +978,8 @@ Give a focused, direct answer in 2-4 paragraphs.`}]}]
 
 // ── MULTI PAPER ANALYZE ──────────────────────────────────
 async function analyzeMulti(){
-  const apiKey=localStorage.getItem('anthropic_key');
-  if(!apiKey){alert('Please enter your Anthropic API key.');return;}
+  
+  
   if(multiPapers.length<2){alert('Please add at least 2 papers to synthesize.');return;}
 
   const domain=document.getElementById('multi-domain').value;
@@ -1192,8 +1231,8 @@ function askMultiQuestionText(q){
 async function askPaperQuestion(paperIndex, q){
   q=(q||'').trim();
   if(!q) return;
-  const apiKey=localStorage.getItem('anthropic_key');
-  if(!apiKey){alert('Please enter your API key.');return;}
+  
+  
   const inputEl=document.getElementById(`paper-ask-input-${paperIndex}`);
   const answerEl=document.getElementById(`paper-ask-answer-${paperIndex}`);
   if(inputEl) inputEl.value=q;
@@ -1204,10 +1243,12 @@ async function askPaperQuestion(paperIndex, q){
   const synthText=(window._multiSynthesisText||'').substring(0,2000);
 
   try {
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
+    const res=await fetch(API_ENDPOINT,{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
+        action:'claude',
+        password: sessionPassword,
         model:'claude-opus-4-5',
         max_tokens:700,
         system:`You are answering a question about a specific paper in a multi-paper synthesis. Answer based on what is known about this paper from the synthesis context. Be specific and direct. If the information isn't available, say so. Write in clear prose.`,
@@ -1233,17 +1274,19 @@ Answer in 2-3 focused paragraphs.`}]}]
 async function askMultiQuestion(){
   const q=document.getElementById('multi-ask-input').value.trim();
   if(!q) return;
-  const apiKey=localStorage.getItem('anthropic_key');
-  if(!apiKey){alert('Please enter your API key.');return;}
+  
+  
   const answerEl=document.getElementById('multi-ask-answer');
   answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-loading">Thinking...</div>`;
   answerEl.classList.add('visible');
 
   try {
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
+    const res=await fetch(API_ENDPOINT,{
       method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
+        action:'claude',
+        password: sessionPassword,
         model:'claude-opus-4-5',
         max_tokens:800,
         system:`You are a scientific research assistant answering questions about a synthesis of multiple papers. Answer based only on what is in the papers provided. Be specific, cite which papers support which claims. If the papers don't contain enough to answer fully, say so. Write in clear prose.`,
@@ -1368,28 +1411,24 @@ function showDiscoverFallback(query, errorDetail=''){
 }
 
 async function fetchJSON(url){
-  // Try direct fetch first
-  try {
-    const res = await fetch(url);
-    if(res.ok){
-      const data = await res.json();
-      return data;
-    }
-  } catch(e){ console.log('Direct fetch failed for', url, e.message); }
+  // All API calls go through Netlify function — no CORS issues
+  const res = await fetch(API_ENDPOINT, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: 'proxy_url', password: sessionPassword, url })
+  });
+  if(!res.ok) throw new Error(`Server error ${res.status}`);
+  return await res.json();
+}
 
-  // Try allorigins proxy
-  try {
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl);
-    if(res.ok){
-      const wrapper = await res.json();
-      if(wrapper.contents){
-        return JSON.parse(wrapper.contents);
-      }
-    }
-  } catch(e){ console.log('Proxy fetch failed for', url, e.message); }
-
-  throw new Error('Could not reach API');
+async function serverSearch(action, params){
+  const res = await fetch(API_ENDPOINT, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action, password: sessionPassword, ...params })
+  });
+  if(!res.ok) throw new Error(`Search error ${res.status}`);
+  return await res.json();
 }
 
 function isHosted(){
@@ -1397,19 +1436,15 @@ function isHosted(){
 }
 
 async function searchEuropePMC(query, yearsBack, limit){
-  // Build query — year filter uses PUB_YEAR not FIRST_PDATE for better compatibility
   const currentYear = new Date().getFullYear();
   const yearFilter = yearsBack > 0 ? ` AND (PUB_YEAR:[${currentYear-yearsBack} TO ${currentYear}])` : '';
   const fullQuery = query + yearFilter;
-  const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(fullQuery)}&resultType=core&pageSize=${Math.min(limit,25)}&format=json&sort=RELEVANCE`;
 
-  let data = await fetchJSON(url);
+  let data = await serverSearch('europe_pmc', { query: fullQuery, limit });
   let results = data.resultList?.result||[];
 
-  // If year filter returned nothing, try without it
   if(results.length === 0 && yearsBack > 0){
-    const urlNoYear = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query)}&resultType=core&pageSize=${Math.min(limit,25)}&format=json&sort=RELEVANCE`;
-    data = await fetchJSON(urlNoYear);
+    data = await serverSearch('europe_pmc', { query, limit });
     results = data.resultList?.result||[];
   }
 
@@ -1425,18 +1460,13 @@ async function searchEuropePMC(query, yearsBack, limit){
     doi: p.doi||null,
     pmid: p.pmid||null,
     abstract: p.abstractText||'',
-    pmcId: p.pmcid||null,
-    epmc_id: p.id||null
+    pmcId: p.pmcid||null
   }));
 }
 
 async function searchSemanticScholar(query, yearsBack, limit){
   const yearFilter = yearsBack > 0 ? `&year=${new Date().getFullYear()-yearsBack}-` : '';
-  const fields = 'title,year,citationCount,authors,publicationVenue,isOpenAccess,openAccessPdf,externalIds,abstract';
-  // Sort by relevance — let the API rank by match quality, not raw citation count
-  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${Math.min(limit,50)}&fields=${fields}${yearFilter}`;
-
-  const data = await fetchJSON(url);
+  const data = await serverSearch('semantic_scholar', { query, year_filter: yearFilter, limit });
   return (data.data||[]).map(p=>({
     source: 'semantic_scholar',
     title: p.title||'Untitled',
@@ -1454,19 +1484,12 @@ async function searchSemanticScholar(query, yearsBack, limit){
 }
 
 async function searchPubMed(query, yearsBack, limit){
-  const oaFilter = '&filter=simsearch2.ffrft';
-  const dateFilter = yearsBack > 0 ? `&datetype=pdat&reldate=${yearsBack*365}` : '';
-  const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=${Math.min(limit*2,100)}&retmode=json&sort=relevance${dateFilter}${oaFilter}`;
-
-  const searchData = await fetchJSON(searchUrl);
-  const pmids = searchData.esearchresult?.idlist||[];
-  if(pmids.length===0) return [];
-
-  const summaryUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${pmids.join(',')}&retmode=json`;
-  const summaryData = await fetchJSON(summaryUrl);
+  const reldate = yearsBack > 0 ? yearsBack * 365 : null;
+  const data = await serverSearch('pubmed_search', { query, reldate, limit });
+  const pmids = data.pmids || [];
 
   return pmids.map(pmid=>{
-    const p = summaryData.result?.[pmid];
+    const p = data.result?.[pmid];
     if(!p) return null;
     const authors = (p.authors||[]).slice(0,3).map(a=>a.name).join(', ') + ((p.authors||[]).length>3?' et al.':'');
     const hasPMC = !!(p.pmc);
