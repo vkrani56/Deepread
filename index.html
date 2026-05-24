@@ -1338,13 +1338,13 @@ async function discoverPapers(){
 
   const statusEl = document.getElementById('discover-status');
   statusEl.style.display='block';
-  statusEl.textContent = 'Connecting to Europe PMC and Semantic Scholar...';
+  statusEl.textContent = 'Searching Europe PMC, Semantic Scholar and PubMed...';
 
-  // Run all three searches independently
+  // Run all three searches — Europe PMC gets the highest limit as primary source
   const [epmcSettled, ssSettled, pmSettled] = await Promise.allSettled([
-    searchEuropePMC(query, yearsBack, Math.ceil(limit*0.6)),
-    searchSemanticScholar(query, yearsBack, Math.ceil(limit*0.6)),
-    searchPubMed(query, yearsBack, Math.ceil(limit*0.3))
+    searchEuropePMC(query, yearsBack, limit),
+    searchSemanticScholar(query, yearsBack, Math.ceil(limit*0.7)),
+    searchPubMed(query, yearsBack, Math.ceil(limit*0.5))
   ]);
 
   const epmc = epmcSettled.status==='fulfilled' ? epmcSettled.value : [];
@@ -1545,7 +1545,19 @@ function renderDiscoverResults(){
   document.getElementById('discover-papers-list').innerHTML = results.map((p,i)=>{
     const origIdx = discoverAllResults.indexOf(p);
     const isSelected = discoverSelected.has(origIdx);
-    const credScore = Math.min(100, Math.round((p.citations/maxCitations)*80 + (p.isOpenAccess?20:0)));
+
+    // Credibility score uses multiple signals:
+    // - Citations (0-50 points) — relative to max in results set
+    // - Open access (20 points) — peer reviewed and freely available
+    // - Has abstract (10 points) — indicates proper indexing
+    // - Known venue (10 points) — published in named journal
+    // - Recent (10 points) — published in last 10 years
+    const citScore = p.citations > 0 ? Math.round((p.citations / maxCitations) * 50) : 0;
+    const oaScore = (p.isOpenAccess || p.pdfUrl || p.pmcId) ? 20 : 0;
+    const absScore = p.abstract ? 10 : 0;
+    const venueScore = p.venue ? 10 : 0;
+    const yearScore = p.year && parseInt(p.year) >= new Date().getFullYear()-10 ? 10 : 0;
+    const credScore = citScore + oaScore + absScore + venueScore + yearScore;
     const canAccess = p.isOpenAccess||p.pdfUrl||p.pmcId;
 
     return `<div class="discover-paper${isSelected?' selected':''}" id="dp-${origIdx}">
@@ -1561,7 +1573,7 @@ function renderDiscoverResults(){
             ${p.venue?`<span class="discover-badge badge-venue">${p.venue.substring(0,35)}${p.venue.length>35?'...':''}</span>`:''}
           </div>
           ${p.authors?`<div class="discover-authors">${p.authors}</div>`:''}
-          <div class="credibility-bar">
+          <div class="credibility-bar" title="Credibility score based on: citation count, open access status, abstract availability, named journal, and recency">
             <span class="credibility-label">Credibility</span>
             <div class="credibility-track"><div class="credibility-fill" style="width:${credScore}%"></div></div>
             <span style="font-size:11px;color:var(--hint);">${credScore}%</span>
