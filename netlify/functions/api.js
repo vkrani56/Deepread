@@ -48,17 +48,30 @@ exports.handler = async (event) => {
   }
 
   if (action === 'europe_pmc') {
-    const { query, limit = 15 } = body;
+    const { query, base_query, limit = 25 } = body;
     try {
-      const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query)}&resultType=core&pageSize=${Math.min(limit,25)}&format=json&sort=RELEVANCE`;
-      console.log('Fetching Europe PMC:', url);
-      const response = await fetch(url);
-      const data = await response.json();
+      const trySearch = async (q) => {
+        const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(q)}&resultType=core&pageSize=${Math.min(limit, 25)}&format=json&sort=RELEVANCE`;
+        console.log('Europe PMC URL:', url);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Europe PMC HTTP ${response.status}`);
+        return await response.json();
+      };
+
+      let data = await trySearch(query);
       console.log('Europe PMC hits:', data.hitCount, 'results:', data.resultList?.result?.length);
+
+      // Fallback to base query without year filter if no results
+      if ((!data.resultList?.result?.length) && base_query && base_query !== query) {
+        console.log('Retrying without year filter');
+        data = await trySearch(base_query);
+        console.log('Retry hits:', data.hitCount, 'results:', data.resultList?.result?.length);
+      }
+
       return { statusCode: 200, headers, body: JSON.stringify(data) };
     } catch(e) {
       console.error('Europe PMC error:', e.message);
-      return { statusCode: 200, headers, body: JSON.stringify({ resultList: { result: [] }, error: e.message }) };
+      return { statusCode: 200, headers, body: JSON.stringify({ resultList: { result: [] }, hitCount: 0, error: e.message }) };
     }
   }
 
