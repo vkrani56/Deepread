@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Read — Research Nuance Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+  :root {
+    --bg:#F7F5F0;--surface:#FFFFFF;--border:#E2DDD6;--text:#1A1714;--muted:#6B665F;
+    --hint:#A09B93;--accent:#2D4A3E;--accent-light:#EBF2EE;--red:#8B2020;--red-bg:#FDF0F0;
+    --amber:#7A4A00;--amber-bg:#FDF6E8;--blue:#1A3A5C;--blue-bg:#EEF4FA;--radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.6;}
+  header{padding:1.5rem 2.5rem;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;}
+  header h1{font-family:'Instrument Serif',serif;font-size:1.6rem;font-weight:400;}
+  header span{font-size:13px;color:var(--muted);font-family:'DM Mono',monospace;}
+  .mode-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 2.5rem;display:flex;gap:0;}
+  .mode-tab{padding:12px 20px;font-size:14px;cursor:pointer;border:none;background:none;color:var(--muted);border-bottom:2px solid transparent;font-family:'DM Sans',sans-serif;transition:all .15s;}
+  .mode-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500;}
+  .main{max-width:860px;margin:0 auto;padding:2rem 1.5rem;}
+  .api-banner{background:var(--amber-bg);border:1px solid #D4AA50;border-radius:var(--radius);padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:13px;color:var(--amber);}
+  .api-banner input{margin-top:8px;width:100%;font-family:'DM Mono',monospace;font-size:13px;padding:8px 12px;border:1px solid #D4AA50;border-radius:6px;background:#FFF;color:var(--text);}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.25rem;}
+  .card h2{font-family:'Instrument Serif',serif;font-size:1.1rem;font-weight:400;margin-bottom:1rem;}
+  .input-tabs{display:flex;gap:6px;margin-bottom:1rem;}
+  .itab{padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:13px;cursor:pointer;color:var(--muted);font-family:'DM Sans',sans-serif;}
+  .itab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .input-panel{display:none;} .input-panel.active{display:block;}
+  .mode-panel{display:none;} .mode-panel.active{display:block;}
+  .drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:2rem;text-align:center;cursor:pointer;transition:all .2s;}
+  .drop-zone:hover,.drop-zone.dragover{border-color:var(--accent);background:var(--accent-light);}
+  .drop-zone input[type=file]{display:none;}
+  .drop-icon{font-size:1.8rem;margin-bottom:.5rem;opacity:.4;}
+  .drop-zone p{font-size:14px;color:var(--muted);}
+  .drop-zone .sub{font-size:12px;color:var(--hint);margin-top:4px;}
+  .file-chosen{margin-top:.75rem;padding:.6rem 1rem;background:var(--accent-light);border-radius:6px;font-size:13px;color:var(--accent);font-family:'DM Mono',monospace;display:none;}
+  input[type=text],textarea,select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s;}
+  input[type=text]:focus,textarea:focus,select:focus{border-color:var(--accent);background:var(--surface);}
+  textarea{min-height:120px;resize:vertical;}
+  .field{margin-bottom:1rem;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500;letter-spacing:.03em;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+  .btn-primary{background:var(--accent);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:15px;font-family:'DM Sans',sans-serif;cursor:pointer;font-weight:500;transition:opacity .15s;width:100%;}
+  .btn-primary:hover{opacity:.88;} .btn-primary:disabled{opacity:.5;cursor:default;}
+  .btn-secondary{background:var(--surface);color:var(--accent);border:1px solid var(--accent);padding:10px 20px;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;cursor:pointer;font-weight:500;transition:all .15s;}
+  .btn-secondary:hover{background:var(--accent-light);}
+  .progress{display:none;margin-top:1rem;padding:1rem;background:var(--accent-light);border-radius:6px;font-size:13px;color:var(--accent);font-family:'DM Mono',monospace;}
+  .progress-steps{list-style:none;}
+  .progress-steps li{padding:3px 0;opacity:.5;}
+  .progress-steps li.done{opacity:1;} .progress-steps li.done::before{content:'✓ ';}
+  .progress-steps li.active{opacity:1;font-weight:500;} .progress-steps li.active::before{content:'→ ';}
+  .results{display:none;}
+  .out-tabs{display:flex;gap:6px;margin-bottom:1.25rem;flex-wrap:wrap;}
+  .out-tab{padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:13px;cursor:pointer;color:var(--muted);font-family:'DM Sans',sans-serif;transition:all .15s;}
+  .out-tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .out-panel{display:none;} .out-panel.active{display:block;}
+  .flag-item{border-left:3px solid;padding:1rem 1.25rem;margin-bottom:.75rem;border-radius:0 8px 8px 0;}
+  .flag-item.overstatement{border-color:var(--red);background:var(--red-bg);}
+  .flag-item.conflict{border-color:#C87A00;background:var(--amber-bg);}
+  .flag-item.missing_context{border-color:#2A5A9A;background:var(--blue-bg);}
+  .flag-type{font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;}
+  .flag-item.overstatement .flag-type{color:var(--red);}
+  .flag-item.conflict .flag-type{color:var(--amber);}
+  .flag-item.missing_context .flag-type{color:var(--blue);}
+  .flag-finding{font-weight:500;font-size:14px;margin-bottom:5px;}
+  .flag-issue{font-size:14px;color:var(--muted);margin-bottom:5px;}
+  .flag-significance{font-size:13px;color:var(--hint);}
+  .prose-out{font-size:15px;line-height:1.8;color:var(--text);white-space:pre-wrap;}
+  .verdict-box{background:var(--accent-light);border:1px solid #B8D4C4;border-radius:var(--radius);padding:1.25rem;margin-bottom:1rem;}
+  .verdict-label{font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;}
+  .conf-badge{display:inline-block;font-size:12px;padding:4px 12px;border-radius:99px;font-weight:500;margin-right:8px;}
+  .conf-high{background:#D4EDDA;color:#1A5C2A;} .conf-medium{background:var(--amber-bg);color:var(--amber);} .conf-low{background:var(--red-bg);color:var(--red);}
+  .conf-reason{font-size:13px;color:var(--muted);}
+  .url-hint{font-size:12px;color:var(--hint);margin-top:6px;}
+  .copy-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;color:var(--muted);font-family:'DM Sans',sans-serif;margin-top:1rem;}
+  .copy-btn:hover{background:var(--bg);}
+  .empty-flags{padding:2rem;text-align:center;color:var(--hint);font-size:14px;}
+
+  /* Toggle switch */
+  .toggle-wrap{display:inline-flex;align-items:center;cursor:pointer;}
+  .toggle-wrap input{display:none;}
+  .toggle-track{width:36px;height:20px;background:var(--border);border-radius:99px;position:relative;transition:background .15s;flex-shrink:0;}
+  .toggle-wrap input:checked + .toggle-track{background:var(--accent);}
+  .toggle-thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:99px;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+  .toggle-wrap input:checked + .toggle-track .toggle-thumb{left:18px;}
+
+  /* Ask a question panel */
+  .ask-panel{margin-top:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;}
+  .ask-label{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.75rem;}
+  .suggested-qs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem;}
+  .suggested-q{font-size:13px;padding:6px 12px;border-radius:99px;border:1px solid var(--border);background:var(--bg);cursor:pointer;color:var(--text);transition:all .15s;text-align:left;}
+  .suggested-q:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light);}
+  .ask-input-row{display:flex;gap:8px;}
+  .ask-input-row input{flex:1;font-size:14px;}
+  .ask-send-btn{padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;}
+  .ask-send-btn:hover{opacity:.88;}
+  .ask-answer{margin-top:1rem;display:none;}
+  .ask-answer.visible{display:block;}
+  .ask-answer-q{font-size:13px;color:var(--muted);font-style:italic;margin-bottom:.5rem;}
+  .ask-answer-a{font-size:14px;line-height:1.75;color:var(--text);white-space:pre-wrap;background:var(--bg);padding:1rem;border-radius:8px;}
+  .ask-loading{font-size:13px;color:var(--hint);padding:.75rem 0;}
+
+  /* Search link */
+  .search-link{font-size:12px;color:var(--accent);text-decoration:none;padding:3px 10px;border:1px solid var(--accent);border-radius:99px;display:inline-block;transition:all .15s;}
+  .search-link:hover{background:var(--accent);color:#fff;}
+
+  /* Reference & citation styles */
+  .ref-item{padding:1rem 1.25rem;border-radius:8px;margin-bottom:.75rem;border-left:3px solid;}
+  .ref-item.load-bearing{border-color:var(--accent);background:var(--accent-light);}
+  .ref-item.stretched{border-color:var(--red);background:var(--red-bg);}
+  .ref-item.supporting{border-color:#C87A00;background:var(--amber-bg);}
+  .ref-label{font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;}
+  .ref-item.load-bearing .ref-label{color:var(--accent);}
+  .ref-item.stretched .ref-label{color:var(--red);}
+  .ref-item.supporting .ref-label{color:var(--amber);}
+  .ref-citation{font-weight:500;font-size:14px;margin-bottom:4px;font-family:'DM Mono',monospace;}
+  .ref-claim{font-size:14px;color:var(--text);margin-bottom:4px;}
+  .ref-assessment{font-size:13px;color:var(--muted);}
+
+  /* Context & background styles */
+  .context-block{padding:1.1rem 1.25rem;border-radius:8px;margin-bottom:.75rem;}
+  .context-block.state-of-art{background:var(--blue-bg);border-left:3px solid #2A5A9A;}
+  .context-block.gap{background:var(--amber-bg);border-left:3px solid #C87A00;}
+  .context-block.rationale{background:var(--accent-light);border-left:3px solid var(--accent);}
+  .context-block.prior-work{background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--hint);}
+  .context-label{font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;color:var(--muted);}
+  .context-text{font-size:14px;line-height:1.75;color:var(--text);}
+
+  /* Multi-paper styles */
+  .paper-queue{margin-bottom:1rem;}
+  .paper-item{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:.5rem;font-size:13px;}
+  .paper-item-name{font-family:'DM Mono',monospace;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .paper-item-remove{background:none;border:none;color:var(--hint);cursor:pointer;font-size:16px;padding:0 0 0 8px;line-height:1;}
+  .paper-item-remove:hover{color:var(--red);}
+  .paper-count{font-size:13px;color:var(--muted);margin-bottom:8px;}
+  .add-more-btn{background:none;border:1px dashed var(--border);border-radius:8px;padding:.75rem;width:100%;font-size:13px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:1rem;}
+  .add-more-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* Synthesis-specific output styles */
+  .synth-section{margin-bottom:1.5rem;}
+  .synth-section-title{font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:1px solid var(--border);}
+  .paper-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--accent-light);color:var(--accent);font-family:'DM Mono',monospace;margin-right:4px;margin-bottom:4px;}
+  .consensus-item{padding:.75rem 1rem;background:var(--accent-light);border-radius:8px;margin-bottom:.5rem;font-size:14px;border-left:3px solid var(--accent);}
+  .conflict-item{padding:.75rem 1rem;background:var(--red-bg);border-radius:8px;margin-bottom:.5rem;font-size:14px;border-left:3px solid var(--red);}
+  .gap-item{padding:.75rem 1rem;background:var(--blue-bg);border-radius:8px;margin-bottom:.5rem;font-size:14px;border-left:3px solid #2A5A9A;}
+  .method-item{padding:.75rem 1rem;background:var(--amber-bg);border-radius:8px;margin-bottom:.5rem;font-size:14px;border-left:3px solid #C87A00;}
+  .paper-summaries-grid{display:grid;gap:1rem;}
+  .paper-summary-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;}
+  .paper-summary-title{font-weight:500;font-size:14px;margin-bottom:.5rem;color:var(--accent);}
+  .paper-summary-body{font-size:14px;color:var(--muted);line-height:1.7;}
+
+  @media(max-width:600px){.row2{grid-template-columns:1fr;}.mode-bar{padding:0 1rem;}.main{padding:1.5rem 1rem;}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Deep Read</h1>
+  <span>research nuance analyzer v2</span>
+</header>
+
+<div class="mode-bar">
+  <button class="mode-tab active" onclick="switchMode('single')">Single paper</button>
+  <button class="mode-tab" onclick="switchMode('multi')">Multi-paper synthesis</button>
+  <button class="mode-tab" onclick="switchMode('discover')">Discover papers</button>
+</div>
+
+<div class="main">
+
+  <div class="api-banner" id="api-banner">
+    <strong>Setup required:</strong> Enter your Anthropic API key. Stays in your browser only.
+    <input type="password" id="api-key" placeholder="sk-ant-..." oninput="saveKey()" />
+  </div>
+
+  <!-- ===== SINGLE PAPER MODE ===== -->
+  <div class="mode-panel active" id="mode-single">
+
+    <div class="card">
+      <h2>Paper input</h2>
+      <div class="input-tabs">
+        <button class="itab active" onclick="switchInput('pdf')">PDF upload</button>
+        <button class="itab" onclick="switchInput('url')">URL (open access)</button>
+        <button class="itab" onclick="switchInput('text')">Paste text</button>
+      </div>
+      <div class="input-panel active" id="input-pdf">
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()" ondragover="dragover(event)" ondragleave="dragleave(event)" ondrop="drop(event)">
+          <input type="file" id="file-input" accept=".pdf" onchange="fileChosen(event)" />
+          <div class="drop-icon">⬆</div>
+          <p>Drop a PDF here or click to browse</p>
+          <p class="sub">Full text + figures extracted and analyzed</p>
+        </div>
+        <div class="file-chosen" id="file-chosen"></div>
+      </div>
+      <div class="input-panel" id="input-url">
+        <div class="field">
+          <label>Paper URL</label>
+          <input type="text" id="paper-url" placeholder="https://pubmed.ncbi.nlm.nih.gov/... or https://arxiv.org/abs/..." />
+          <p class="url-hint">Works best with PubMed open-access, bioRxiv, medRxiv, arXiv. Paywalled journals not supported.</p>
+        </div>
+      </div>
+      <div class="input-panel" id="input-text">
+        <div class="field">
+          <label>Paste full paper text</label>
+          <textarea id="paper-text" placeholder="Paste abstract, methods, results, discussion. More text = better nuance detection."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Analysis settings</h2>
+      <div class="row2">
+        <div class="field">
+          <label>Scientific domain</label>
+          <select id="domain">
+            <option>Biomedical / clinical</option>
+            <option>Molecular biology</option>
+            <option>Epidemiology / public health</option>
+            <option>Environmental science</option>
+            <option>Neuroscience</option>
+            <option selected>Chemistry / biochemistry</option>
+            <option>Physics</option>
+            <option>Social / behavioral science</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Specific question or concern (optional)</label>
+          <input type="text" id="focus-q" placeholder="e.g. Does the data support the headline claim?" />
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:.25rem;">
+        <label class="toggle-wrap">
+          <input type="checkbox" id="analyze-figures" checked />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+        <span style="font-size:13px;color:var(--muted);">Analyze figures and charts (recommended for methods-heavy papers; disable to reduce cost and processing time)</span>
+      </div>
+    </div>
+
+    <button class="btn-primary" id="analyze-btn" onclick="analyze()">Deep-read this paper</button>
+
+    <div class="progress" id="progress">
+      <ul class="progress-steps">
+        <li id="step-extract">Extracting text from paper</li>
+        <li id="step-figures">Processing figures and charts</li>
+        <li id="step-analyze">Analyzing Results vs Discussion</li>
+        <li id="step-flags">Detecting nuance flags</li>
+        <li id="step-output">Generating outputs</li>
+      </ul>
+      <div id="status-msg" style="margin-top:8px;font-size:12px;color:var(--accent);opacity:.8;"></div>
+    </div>
+    <div id="single-error" style="display:none;margin-top:1rem;padding:1rem 1.25rem;background:var(--red-bg);border:1px solid #E8AAAA;border-radius:var(--radius);font-size:14px;color:var(--red);"></div>
+
+    <div class="results" id="results">
+      <div class="out-tabs">
+        <button class="out-tab active" onclick="switchOut('flags')">Nuance flags</button>
+        <button class="out-tab" onclick="switchOut('context')">Context & background</button>
+        <button class="out-tab" onclick="switchOut('expert')">Expert summary</button>
+        <button class="out-tab" onclick="switchOut('figures')">Figures</button>
+        <button class="out-tab" onclick="switchOut('verdict')">Bottom line</button>
+      </div>
+      <div class="out-panel active card" id="panel-flags"><div id="flags-content"></div></div>
+      <div class="out-panel card" id="panel-context"><div id="context-content"></div></div>
+      <div class="out-panel card" id="panel-expert">
+        <div class="prose-out" id="expert-content"></div>
+        <button class="copy-btn" onclick="copyText('expert-content')">Copy text</button>
+      </div>
+      <div class="out-panel" id="panel-figures"><div id="figures-content"></div></div>
+      <div class="out-panel" id="panel-verdict">
+        <div class="verdict-box">
+          <div class="verdict-label">Researcher's verdict</div>
+          <div class="prose-out" id="verdict-content"></div>
+        </div>
+        <div id="confidence-row"></div>
+        <button class="copy-btn" onclick="copyText('verdict-content')">Copy verdict</button>
+      </div>
+
+      <!-- Ask a question panel -->
+      <div class="ask-panel" id="ask-panel" style="display:none;">
+        <div class="ask-label">Ask about this paper</div>
+        <div id="suggested-qs" class="suggested-qs"></div>
+        <div class="ask-input-row">
+          <input type="text" id="ask-input" placeholder="Ask your own question about this paper..." onkeydown="if(event.key==='Enter') askQuestion()" />
+          <button class="ask-send-btn" onclick="askQuestion()">Ask</button>
+        </div>
+        <div id="ask-answer" class="ask-answer"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MULTI-PAPER MODE ===== -->
+  <div class="mode-panel" id="mode-multi">
+
+    <div class="card">
+      <h2>Add papers for synthesis</h2>
+      <p style="font-size:14px;color:var(--muted);margin-bottom:1rem;">Add 2–6 related papers. Mix PDFs and URLs freely — the tool will analyze each individually then synthesize across all of them.</p>
+
+      <div class="paper-queue" id="paper-queue"></div>
+      <p class="paper-count" id="paper-count">0 papers added</p>
+
+      <!-- PDF upload -->
+      <div class="drop-zone" id="multi-drop-zone" onclick="document.getElementById('multi-file-input').click()" ondragover="multiDragover(event)" ondragleave="multiDragleave(event)" ondrop="multiDrop(event)" style="margin-bottom:.75rem;">
+        <input type="file" id="multi-file-input" accept=".pdf" multiple onchange="multiFileChosen(event)" />
+        <div class="drop-icon">⬆</div>
+        <p>Drop PDFs here or click to upload</p>
+        <p class="sub">Select multiple files at once, or one by one</p>
+      </div>
+
+      <!-- URL input -->
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="multi-url-input" placeholder="Or paste a URL (PubMed, bioRxiv, arXiv open-access)..." style="flex:1;font-size:13px;" onkeydown="if(event.key==='Enter')addURLPaper()" />
+        <button class="btn-secondary" style="white-space:nowrap;padding:10px 14px;font-size:13px;" onclick="addURLPaper()">Add URL</button>
+      </div>
+      <p style="font-size:12px;color:var(--hint);margin-top:5px;">URL support: PubMed open-access, bioRxiv, medRxiv, arXiv. Paywalled journals not supported.</p>
+    </div>
+
+    <div class="card">
+      <h2>Synthesis settings</h2>
+      <div class="row2">
+        <div class="field">
+          <label>Scientific domain</label>
+          <select id="multi-domain">
+            <option>Biomedical / clinical</option>
+            <option>Molecular biology</option>
+            <option>Epidemiology / public health</option>
+            <option>Environmental science</option>
+            <option>Neuroscience</option>
+            <option selected>Chemistry / biochemistry</option>
+            <option>Physics</option>
+            <option>Social / behavioral science</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Synthesis focus</label>
+          <select id="multi-focus">
+            <option value="broad">Broad — all aspects</option>
+            <option value="methods">Analytical methods comparison</option>
+            <option value="findings">Findings and outcomes</option>
+            <option value="gaps">Research gaps and conflicts</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Topic / research question (optional but recommended)</label>
+        <input type="text" id="multi-topic" placeholder="e.g. Characterization and measurement of karanjin, pongamol and flavonoids in Pongamia" value="Characterization and measurement of karanjin, pongamol and flavonoids in Pongamia" />
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:.25rem;">
+        <label class="toggle-wrap">
+          <input type="checkbox" id="multi-analyze-figures" checked />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+        <span style="font-size:13px;color:var(--muted);">Analyze figures and charts (disable to reduce cost and processing time)</span>
+      </div>
+    </div>
+
+    <button class="btn-primary" id="multi-analyze-btn" onclick="analyzeMulti()">Synthesize papers</button>
+
+    <div class="progress" id="multi-progress">
+      <ul class="progress-steps">
+        <li id="mstep-extract">Extracting text from all papers</li>
+        <li id="mstep-individual">Analyzing each paper individually</li>
+        <li id="mstep-synthesize">Cross-paper synthesis</li>
+        <li id="mstep-gaps">Identifying research gaps</li>
+        <li id="mstep-output">Generating final report</li>
+      </ul>
+      <div id="multi-status-msg" style="margin-top:8px;font-size:12px;color:var(--accent);opacity:.8;"></div>
+    </div>
+    <div id="multi-error" style="display:none;margin-top:1rem;padding:1rem 1.25rem;background:var(--red-bg);border:1px solid #E8AAAA;border-radius:var(--radius);font-size:14px;color:var(--red);"></div>
+
+    <div class="results" id="multi-results">
+      <div class="out-tabs">
+        <button class="out-tab active" onclick="switchMultiOut('synthesis')">Synthesis</button>
+        <button class="out-tab" onclick="switchMultiOut('context')">Context & background</button>
+        <button class="out-tab" onclick="switchMultiOut('consensus')">Consensus & conflicts</button>
+        <button class="out-tab" onclick="switchMultiOut('methods')">Methods compared</button>
+        <button class="out-tab" onclick="switchMultiOut('gaps')">Research gaps</button>
+        <button class="out-tab" onclick="switchMultiOut('papers')">Individual papers</button>
+      </div>
+      <div class="out-panel active" id="mpanel-synthesis">
+        <div class="card">
+          <div class="prose-out" id="msynth-content"></div>
+          <button class="copy-btn" onclick="copyText('msynth-content')">Copy synthesis</button>
+        </div>
+        <!-- Ask panel lives only here in synthesis tab -->
+        <div class="ask-panel" id="multi-ask-panel" style="display:none;">
+          <div class="ask-label">Ask about this synthesis</div>
+          <div id="multi-suggested-qs" class="suggested-qs"></div>
+          <div class="ask-input-row">
+            <input type="text" id="multi-ask-input" placeholder="Ask your own question about these papers..." onkeydown="if(event.key==='Enter') askMultiQuestion()" />
+            <button class="ask-send-btn" onclick="askMultiQuestion()">Ask</button>
+          </div>
+          <div id="multi-ask-answer" class="ask-answer"></div>
+        </div>
+      </div>
+      <div class="out-panel card" id="mpanel-context"><div id="mcontext-content"></div></div>
+      <div class="out-panel card" id="mpanel-consensus"><div id="mconsensus-content"></div></div>
+      <div class="out-panel card" id="mpanel-methods"><div id="mmethods-content"></div></div>
+      <div class="out-panel card" id="mpanel-gaps"><div id="mgaps-content"></div></div>
+      <div class="out-panel" id="mpanel-papers"><div id="mpapers-content"></div></div>
+    </div>
+  </div>
+
+  <!-- ===== DISCOVER MODE ===== -->
+  <div class="mode-panel" id="mode-discover">
+    <div class="card">
+      <h2>Find papers on a topic</h2>
+      <p style="font-size:14px;color:var(--muted);margin-bottom:1rem;">Search for the most-cited open-access papers on any topic. Results are ranked by citation count and include credibility signals to help you select papers worth analyzing.</p>
+      <div class="field">
+        <label>Research topic or question</label>
+        <input type="text" id="discover-query" placeholder="e.g. laughter health benefits humans, karanjin pongamia characterization, CRISPR off-target effects..." onkeydown="if(event.key==='Enter') discoverPapers()" />
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Time range</label>
+          <select id="discover-years">
+            <option value="5">Last 5 years</option>
+            <option value="10">Last 10 years</option>
+            <option value="20">Last 20 years</option>
+            <option value="0">All time</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Results to show</label>
+          <select id="discover-limit">
+            <option value="10">10 papers</option>
+            <option value="20">20 papers</option>
+            <option value="30">30 papers</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-primary" style="flex:1;min-width:160px;" onclick="discoverPapers()">Search papers</button>
+        <button class="btn-secondary" id="discover-send-btn" style="display:none;" onclick="sendSelectedToSynthesis()">Analyze selected in synthesis ↗</button>
+      </div>
+    </div>
+
+    <div id="discover-status" style="display:none;margin-top:1rem;padding:1rem;background:var(--accent-light);border-radius:var(--radius);font-size:13px;color:var(--accent);font-family:'DM Mono',monospace;"></div>
+    <div id="discover-error" style="display:none;margin-top:1rem;padding:1rem;background:var(--red-bg);border:1px solid #E8AAAA;border-radius:var(--radius);font-size:14px;color:var(--red);"></div>
+
+    <div id="discover-results" style="display:none;margin-top:1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+        <div id="discover-results-label" style="font-size:13px;color:var(--muted);"></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="discover-oa-only" onchange="renderDiscoverResults()" />
+            Open access only
+          </label>
+          <select id="discover-sort" onchange="renderDiscoverResults()" style="font-size:13px;padding:6px 10px;">
+            <option value="relevance">Sort by relevance</option>
+            <option value="citations">Sort by citations</option>
+            <option value="year">Sort by recency</option>
+          </select>
+        </div>
+      </div>
+      <div id="discover-papers-list"></div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+  /* Discover mode styles */
+  .discover-paper{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:.75rem;transition:border-color .15s;}
+  .discover-paper.selected{border-color:var(--accent);background:var(--accent-light);}
+  .discover-paper-header{display:flex;gap:.75rem;align-items:flex-start;}
+  .discover-checkbox{margin-top:3px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--accent);}
+  .discover-title{font-size:14px;font-weight:500;color:var(--text);line-height:1.5;margin-bottom:.4rem;cursor:pointer;}
+  .discover-title:hover{color:var(--accent);}
+  .discover-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:.4rem;}
+  .discover-badge{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500;}
+  .badge-citations{background:#EEF4FA;color:var(--blue);}
+  .badge-year{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+  .badge-oa{background:#EBF2EE;color:var(--accent);}
+  .badge-venue{background:var(--amber-bg);color:var(--amber);}
+  .badge-no-oa{background:var(--red-bg);color:var(--red);}
+  .discover-authors{font-size:12px;color:var(--hint);margin-bottom:.4rem;}
+  .discover-abstract{font-size:13px;color:var(--muted);line-height:1.6;margin-top:.5rem;display:none;}
+  .discover-abstract.expanded{display:block;}
+  .discover-toggle{font-size:12px;color:var(--accent);cursor:pointer;background:none;border:none;padding:0;font-family:'DM Sans',sans-serif;}
+  .discover-toggle:hover{text-decoration:underline;}
+  .discover-actions{display:flex;gap:8px;margin-top:.75rem;flex-wrap:wrap;}
+  .discover-link{font-size:12px;padding:4px 10px;border-radius:99px;border:1px solid var(--border);color:var(--muted);text-decoration:none;transition:all .15s;}
+  .discover-link:hover{border-color:var(--accent);color:var(--accent);}
+  .credibility-bar{display:flex;align-items:center;gap:8px;margin-top:.5rem;}
+  .credibility-label{font-size:11px;color:var(--hint);width:80px;flex-shrink:0;}
+  .credibility-track{flex:1;height:4px;background:var(--border);border-radius:99px;overflow:hidden;}
+  .credibility-fill{height:100%;border-radius:99px;background:var(--accent);transition:width .3s;}
+  .selected-count{font-size:13px;color:var(--accent);font-weight:500;}
+</style>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let pdfFile = null;
+let currentInput = 'pdf';
+let multiPapers = []; // [{name, file}]
+
+// ── API KEY ──────────────────────────────────────────────
+function saveKey() {
+  const k = document.getElementById('api-key').value;
+  if (k.startsWith('sk-')) {
+    localStorage.setItem('anthropic_key', k);
+    const b = document.getElementById('api-banner');
+    b.style.background='#EBF2EE'; b.style.borderColor='#6BAD8A'; b.style.color='#1A5C2A';
+  }
+}
+window.onload = () => {
+  const k = localStorage.getItem('anthropic_key');
+  if (k) {
+    document.getElementById('api-key').value = k;
+    const b = document.getElementById('api-banner');
+    b.style.background='#EBF2EE'; b.style.borderColor='#6BAD8A'; b.style.color='#1A5C2A';
+  }
+};
+
+// ── MODE SWITCH ──────────────────────────────────────────
+function switchMode(m) {
+  document.querySelectorAll('.mode-tab').forEach((t,i)=>t.classList.toggle('active',['single','multi','discover'][i]===m));
+  document.querySelectorAll('.mode-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('mode-'+m).classList.add('active');
+}
+
+// ── SINGLE PAPER ─────────────────────────────────────────
+function switchInput(tab) {
+  currentInput = tab;
+  document.querySelectorAll('.itab').forEach((t,i)=>t.classList.toggle('active',['pdf','url','text'][i]===tab));
+  document.querySelectorAll('.input-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('input-'+tab).classList.add('active');
+}
+function dragover(e){e.preventDefault();document.getElementById('drop-zone').classList.add('dragover');}
+function dragleave(){document.getElementById('drop-zone').classList.remove('dragover');}
+function drop(e){e.preventDefault();dragleave();const f=e.dataTransfer.files[0];if(f&&f.type==='application/pdf')setPDF(f);}
+function fileChosen(e){if(e.target.files[0])setPDF(e.target.files[0]);}
+function setPDF(file){
+  pdfFile=file;
+  const el=document.getElementById('file-chosen');
+  el.style.display='block';
+  el.textContent=`${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+}
+
+// ── MULTI PAPER FILE HANDLING ────────────────────────────
+function multiDragover(e){e.preventDefault();document.getElementById('multi-drop-zone').classList.add('dragover');}
+function multiDragleave(){document.getElementById('multi-drop-zone').classList.remove('dragover');}
+function multiDrop(e){
+  e.preventDefault();multiDragleave();
+  Array.from(e.dataTransfer.files).filter(f=>f.type==='application/pdf').forEach(addPaperToQueue);
+}
+function multiFileChosen(e){
+  Array.from(e.target.files).forEach(addPaperToQueue);
+  e.target.value='';
+}
+function addPaperToQueue(file) {
+  if(multiPapers.length >= 6){alert('Maximum 6 papers at once for best synthesis quality.');return;}
+  if(multiPapers.find(p=>p.name===file.name)){return;}
+  multiPapers.push({name:file.name, type:'pdf', file});
+  renderPaperQueue();
+}
+function addURLPaper() {
+  const url=document.getElementById('multi-url-input').value.trim();
+  if(!url){return;}
+  if(multiPapers.length >= 6){alert('Maximum 6 papers at once.');return;}
+  if(multiPapers.find(p=>p.url===url)){alert('This URL has already been added.');return;}
+  const shortName = url.replace(/https?:\/\//,'').substring(0,60)+'...';
+  multiPapers.push({name:shortName, type:'url', url});
+  document.getElementById('multi-url-input').value='';
+  renderPaperQueue();
+}
+function removePaper(idx){
+  multiPapers.splice(idx,1);
+  renderPaperQueue();
+}
+function renderPaperQueue(){
+  const q=document.getElementById('paper-queue');
+  const c=document.getElementById('paper-count');
+  c.textContent=`${multiPapers.length} paper${multiPapers.length!==1?'s':''} added${multiPapers.length>0?' — ready to synthesize':''}`;
+  q.innerHTML=multiPapers.map((p,i)=>`
+    <div class="paper-item">
+      <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${p.type==='url'?'var(--blue-bg)':'var(--accent-light)'};color:${p.type==='url'?'var(--blue)':'var(--accent)'};font-weight:500;margin-right:6px;flex-shrink:0;">${p.type==='url'?'URL':'PDF'}</span>
+      <span class="paper-item-name">${i+1}. ${p.name}</span>
+      <button class="paper-item-remove" onclick="removePaper(${i})" title="Remove">×</button>
+    </div>`).join('');
+}
+
+// ── PDF EXTRACTION ───────────────────────────────────────
+function setStep(id,state){
+  const el=document.getElementById(id);
+  if(el) el.className=state;
+}
+
+async function extractPDFText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  let fullText='';
+  const images=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i);
+    const tc=await page.getTextContent();
+    // Better text extraction: preserve spacing between items, handle column layouts
+    let pageText='';
+    let lastY=null;
+    for(const item of tc.items){
+      if(lastY!==null && Math.abs(item.transform[5]-lastY)>5) pageText+='\n';
+      pageText+=(item.str||'')+' ';
+      lastY=item.transform[5];
+    }
+    fullText+=`\n--- Page ${i} ---\n`+pageText.trim();
+    // Capture images for pages that likely have figures (middle 70% of document)
+    const pct=(i-1)/(pdf.numPages-1||1);
+    if(pct>=0.1 && pct<=0.95 && images.length<8){
+      const vp=page.getViewport({scale:1.3});
+      const canvas=document.createElement('canvas');
+      canvas.width=vp.width; canvas.height=vp.height;
+      await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+      images.push({page:i,data:canvas.toDataURL('image/jpeg',0.7).split(',')[1]});
+    }
+  }
+  // Log extraction quality for debugging
+  const wordCount=fullText.split(/\s+/).filter(Boolean).length;
+  console.log(`PDF extracted: ${pdf.numPages} pages, ~${wordCount} words, ${images.length} images`);
+  if(wordCount<200){
+    console.warn('Low word count — PDF may be scanned or image-based. Text extraction may be incomplete.');
+  }
+  return {text:fullText, images, wordCount, numPages:pdf.numPages};
+}
+
+async function fetchURL(url){
+  let apiUrl=url;
+  if(url.includes('pubmed.ncbi.nlm.nih.gov')){
+    const pmid=url.match(/\/(\d+)/)?.[1];
+    if(pmid) apiUrl=`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=text`;
+  } else if(url.includes('arxiv.org/abs/')){
+    apiUrl=`https://export.arxiv.org/abs/${url.split('/abs/')[1]}`;
+  }
+  const res=await fetch(apiUrl);
+  const text=await res.text();
+  return {text:text.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().substring(0,12000),images:[]};
+}
+
+// ── CLAUDE API ───────────────────────────────────────────
+async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function callClaude(messages, maxTokens=4000, retries=3) {
+  const apiKey=localStorage.getItem('anthropic_key');
+  if(!apiKey) throw new Error('No API key found. Please enter your Anthropic API key at the top.');
+  const SYSTEM=`You are a senior research scientist with 20+ years critically evaluating scientific literature. You read papers the way a seasoned researcher does — scrutinizing actual Results data, statistics, and whether Discussion sections honestly reflect findings. You are rigorous, honest, and preserve nuance. Respond ONLY with valid JSON. No preamble, no markdown fences.`;
+
+  for(let attempt=1; attempt<=retries; attempt++){
+    try {
+      const res=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:'claude-opus-4-5',max_tokens:maxTokens,system:SYSTEM,messages})
+      });
+      if(res.status===429){
+        const wait = attempt * 8000;
+        updateStatus(`Rate limit hit — waiting ${wait/1000}s before retry ${attempt}/${retries}...`);
+        await sleep(wait);
+        continue;
+      }
+      if(res.status===401) throw new Error('Invalid API key. Please check your key at console.anthropic.com and re-enter it.');
+      if(res.status===402) throw new Error('Insufficient API credits. Please add credits at console.anthropic.com → Billing.');
+      if(!res.ok){
+        const e=await res.json().catch(()=>({error:{message:`HTTP ${res.status}`}}));
+        if(attempt<retries){ await sleep(attempt*3000); continue; }
+        throw new Error(`API error (${res.status}): ${e.error?.message||'Unknown error'}`);
+      }
+      const data=await res.json();
+      const raw=data.content.map(b=>b.text||'').join('');
+      const clean=raw.replace(/```json|```/g,'').trim();
+      try { return JSON.parse(clean); }
+      catch(parseErr){
+        if(attempt<retries){ await sleep(2000); continue; }
+        throw new Error('Could not parse API response as JSON. The model may have returned unexpected output.');
+      }
+    } catch(e){
+      if(e.message.includes('fetch')||e.message.includes('network')||e.message.includes('Failed')){
+        if(attempt<retries){
+          updateStatus(`Network error — retrying (${attempt}/${retries})...`);
+          await sleep(attempt*4000);
+          continue;
+        }
+        throw new Error('Network error: Could not reach Anthropic API. Check your internet connection. If using a local HTML file, your browser may be blocking the request — try opening Chrome with web security disabled or use a different browser.');
+      }
+      throw e;
+    }
+  }
+  throw new Error('All retry attempts failed. Please try again.');
+}
+
+function updateStatus(msg){
+  const el=document.getElementById('status-msg');
+  if(el) el.textContent=msg;
+  const mel=document.getElementById('multi-status-msg');
+  if(mel) mel.textContent=msg;
+}
+
+function showError(id, msg){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.style.display='block';
+  el.innerHTML=`<strong>Error:</strong> ${msg}<br><span style="font-size:13px;opacity:.8;margin-top:4px;display:block;">If this is a network error, try: (1) re-entering your API key, (2) checking credits at console.anthropic.com, (3) waiting 30 seconds and retrying.</span>`;
+}
+
+// ── SINGLE PAPER ANALYZE ─────────────────────────────────
+async function analyze(){
+  const apiKey=localStorage.getItem('anthropic_key');
+  if(!apiKey){alert('Please enter your Anthropic API key.');return;}
+  const domain=document.getElementById('domain').value;
+  const focusQ=document.getElementById('focus-q').value;
+  const analyzeFigures=document.getElementById('analyze-figures').checked;
+
+  document.getElementById('progress').style.display='block';
+  document.getElementById('results').style.display='none';
+  document.getElementById('single-error').style.display='none';
+  document.getElementById('analyze-btn').disabled=true;
+  ['step-extract','step-figures','step-analyze','step-flags','step-output'].forEach(s=>setStep(s,''));
+
+  try {
+    let content; let hasImages=false;
+    setStep('step-extract','active');
+    if(currentInput==='pdf'){
+      if(!pdfFile){alert('Please select a PDF.');return;}
+      content=await extractPDFText(pdfFile); hasImages=true;
+    } else if(currentInput==='url'){
+      const url=document.getElementById('paper-url').value.trim();
+      if(!url){alert('Please enter a URL.');return;}
+      content=await fetchURL(url);
+    } else {
+      const text=document.getElementById('paper-text').value.trim();
+      if(!text){alert('Please paste paper text.');return;}
+      content={text,images:[]};
+    }
+    setStep('step-extract','done'); setStep('step-figures','active');
+
+    // Warn if extraction looks thin
+    if(content.wordCount && content.wordCount < 300){
+      updateStatus(`⚠ Low text extracted (~${content.wordCount} words from ${content.numPages} pages) — PDF may be scanned or image-based. Analysis will use figures where available but text coverage may be incomplete.`);
+    }
+
+    const userContent=[];
+    if(hasImages && analyzeFigures && content.images.length>0){
+      content.images.forEach(img=>userContent.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:img.data}}));
+    }
+    setStep('step-figures','done'); setStep('step-analyze','active'); setStep('step-flags','active');
+
+    const prompt=`Analyze this scientific paper thoroughly. Domain: ${domain}.
+${focusQ?`Specific question: ${focusQ}`:''}
+
+PAPER TEXT:
+${content.text.substring(0,18000)}
+${analyzeFigures&&content.images.length>0?'\nPage images provided above — analyze figures carefully.':''}
+
+For expert_summary write a detailed structured analysis covering:
+1. STUDY DESIGN: type, sample, controls, design weaknesses
+2. KEY RESULTS WITH INTERPRETATION: for each major finding include (a) what was found with actual numbers, (b) what this means in practical or scientific context — is the effect size meaningful or trivial, how does it compare to benchmarks or prior work, (c) what would change if this finding were wrong or didn't replicate
+3. STATISTICAL CRITIQUE: sample size, power, multiple comparisons, red flags
+4. METHODOLOGY STRENGTHS & WEAKNESSES
+5. RESULTS vs CONCLUSIONS: does Discussion accurately reflect Results?
+6. BROADER CONTEXT: how findings fit prior literature, what this adds
+7. WHAT REMAINS UNKNOWN — be explicit about what this paper cannot tell us and what adjacent literature would be needed to fill those gaps
+
+For introduction_context extract a substantive paragraph-level summary covering:
+- The background and motivation: what larger problem or phenomenon is this research embedded in, and why does it matter?
+- The state of the art: what did prior research establish, and what were its limitations or open questions?
+- The specific gap or problem the authors identified — be precise about what was missing or unknown
+- The theoretical or practical stakes: what would be gained by filling this gap?
+- Why the authors believed this specific study design or approach was the right way to address it
+- Key prior work or researchers mentioned as foundational context
+
+For flags: for each nuance flag, add a "broader_context" field noting whether this issue is likely addressed in adjacent literature, and a "pubmed_search" field with a broader 3-5 word conceptual search query — use common terms a non-expert could search, not highly specific jargon. The query should return results even if someone searches it verbatim without modification.
+
+For suggested_questions: generate 4 questions that are tightly specific to THIS paper's actual findings, tensions, and limitations — not generic. Examples of good question types: "The authors claim X but the data shows Y — what explains this gap?", "The sample size was N — is that sufficient to support this conclusion given typical effect sizes in this area?", "This finding contradicts [specific prior work mentioned] — which is more likely to be correct and why?". Avoid vague questions like "what are the implications?" or "how does this relate to prior work?".
+
+Respond ONLY with this JSON:
+{
+  "flags":[{
+    "type":"overstatement"|"conflict"|"missing_context",
+    "finding":"specific claim or finding",
+    "issue":"what the problem is",
+    "significance":"why this changes interpretation",
+    "broader_context":"whether this issue is likely addressed in adjacent literature and what that literature would say",
+    "pubmed_search":"3-6 word search query to find relevant external evidence"
+  }],
+  "introduction_context":{
+    "background_motivation":"paragraph describing the larger problem, why it matters, and the broader field context",
+    "state_of_art":"what prior research established and where it fell short",
+    "identified_gap":"precisely what was missing, unknown, or unresolved",
+    "theoretical_stakes":"what would be gained scientifically or practically by filling this gap",
+    "study_rationale":"why this specific approach or design was chosen to address the gap",
+    "key_prior_work":["author/paper and what it contributed as mentioned in Introduction"]
+  },
+  "expert_summary":"detailed 400+ word structured analysis with interpretive layer on each key finding",
+  "figure_observations":[{"figure":"Figure X/page N","observation":"what it shows, what it means, and whether it supports the surrounding claims"}],
+  "bottom_line":"2-3 sentence frank verdict",
+  "confidence_level":"high"|"medium"|"low",
+  "confidence_reason":"...",
+  "knowledge_boundaries":"2-3 sentences on what this paper fundamentally cannot tell us — what external literature, data, or evidence would be needed to complete the picture",
+  "suggested_questions":["specific question 1","specific question 2","specific question 3","specific question 4"]
+}`;
+    userContent.push({type:'text',text:prompt});
+    const result=await callClaude([{role:'user',content:userContent}],2500);
+    setStep('step-analyze','done'); setStep('step-flags','done'); setStep('step-output','done');
+    renderSingleResults(result,content);
+  } catch(e){
+    console.error(e);
+    document.getElementById('progress').style.display='none';
+    showError('single-error', e.message);
+  } finally {
+    document.getElementById('analyze-btn').disabled=false;
+    document.getElementById('progress').style.display='none';
+  }
+}
+
+function renderSingleResults(r,content){
+  window._currentPaperText = content.text.substring(0,12000);
+  window._currentPaperSummary = r.expert_summary||'';
+  window._currentDomain = document.getElementById('domain').value;
+
+  const flagMap={overstatement:'Overstated conclusion',conflict:'Results vs discussion conflict',missing_context:'Missing context'};
+  document.getElementById('flags-content').innerHTML=(r.flags||[]).length===0
+    ?'<div class="empty-flags">No major nuance flags detected.</div>'
+    :(r.flags||[]).map(f=>`
+      <div class="flag-item ${f.type}">
+        <div class="flag-type">${flagMap[f.type]||f.type}</div>
+        <div class="flag-finding">${f.finding}</div>
+        <div class="flag-issue">${f.issue}</div>
+        <div class="flag-significance">Why it matters: ${f.significance}</div>
+        ${f.broader_context?`<div style="font-size:13px;color:var(--blue);margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.06);">📚 Broader context: ${f.broader_context}</div>`:''}
+        ${f.pubmed_search?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <a href="https://scholar.google.com/scholar?q=${encodeURIComponent(f.pubmed_search)}" target="_blank" class="search-link">Google Scholar ↗</a>
+          <a href="https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(f.pubmed_search)}" target="_blank" class="search-link" style="opacity:.6;font-size:11px;">PubMed ↗</a>
+          <span style="font-size:12px;color:var(--hint);">Search: "${f.pubmed_search}"</span>
+        </div>`:''}
+      </div>`).join('');
+
+  // Knowledge boundaries — add to bottom line tab
+  const ctx=r.introduction_context||{};
+  document.getElementById('context-content').innerHTML=`
+    ${ctx.background_motivation?`<div class="context-block state-of-art"><div class="context-label">Background & motivation</div><div class="context-text">${ctx.background_motivation}</div></div>`:''}
+    ${ctx.state_of_art?`<div class="context-block state-of-art"><div class="context-label">State of the art — what prior research established</div><div class="context-text">${ctx.state_of_art}</div></div>`:''}
+    ${ctx.identified_gap?`<div class="context-block gap"><div class="context-label">The specific gap identified</div><div class="context-text">${ctx.identified_gap}</div></div>`:''}
+    ${ctx.theoretical_stakes?`<div class="context-block gap"><div class="context-label">Why filling this gap matters</div><div class="context-text">${ctx.theoretical_stakes}</div></div>`:''}
+    ${ctx.study_rationale?`<div class="context-block rationale"><div class="context-label">Why this approach was chosen</div><div class="context-text">${ctx.study_rationale}</div></div>`:''}
+    ${(ctx.key_prior_work||[]).length>0?`<div class="context-block prior-work"><div class="context-label">Key prior work cited</div><div class="context-text">${(ctx.key_prior_work||[]).map(p=>`<div style="margin-bottom:.5rem;">• ${p}</div>`).join('')}</div></div>`:''}
+    ${!ctx.background_motivation&&!ctx.state_of_art&&!ctx.identified_gap?'<div class="empty-flags">Introduction context not detected — paper may lack a structured introduction section.</div>':''}`;
+
+  document.getElementById('expert-content').textContent=r.expert_summary||'Not generated.';
+
+  document.getElementById('verdict-content').textContent=r.bottom_line||'';
+  const confMap={high:'conf-high',medium:'conf-medium',low:'conf-low'};
+  const cls=confMap[r.confidence_level]||'conf-medium';
+  const label=(r.confidence_level||'medium').charAt(0).toUpperCase()+(r.confidence_level||'medium').slice(1)+' confidence';
+  document.getElementById('confidence-row').innerHTML=`
+    <span class="conf-badge ${cls}">${label}</span>
+    <span class="conf-reason">${r.confidence_reason||''}</span>
+    ${r.knowledge_boundaries?`<div style="margin-top:1rem;padding:1rem;background:var(--blue-bg);border-radius:8px;font-size:14px;border-left:3px solid #2A5A9A;"><strong>What this paper cannot tell us:</strong> ${r.knowledge_boundaries}</div>`:''}`;
+
+  const figObs=r.figure_observations||[];
+  const figToggleOn=document.getElementById('analyze-figures').checked;
+  document.getElementById('figures-content').innerHTML=(!figToggleOn)
+    ?'<div class="card"><p style="font-size:14px;color:var(--muted);">Figure analysis was disabled. Enable "Analyze figures" and re-run to include figure observations.</p></div>'
+    :figObs.length===0
+      ?'<div class="card"><p style="font-size:14px;color:#999;">No figures detected or PDF not uploaded.</p></div>'
+      :figObs.map(f=>`<div class="card"><div style="font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">${f.figure}</div><div style="font-size:14px;line-height:1.75;">${f.observation}</div></div>`).join('');
+
+  // Suggested questions
+  const qs=r.suggested_questions||[];
+  document.getElementById('suggested-qs').innerHTML=qs.map(q=>
+    `<button class="suggested-q" onclick="askQuestionText(this.textContent)">${q}</button>`
+  ).join('');
+  document.getElementById('ask-panel').style.display='block';
+  document.getElementById('ask-answer').classList.remove('visible');
+  document.getElementById('ask-answer').innerHTML='';
+  document.getElementById('ask-input').value='';
+
+  document.getElementById('results').style.display='block';
+  switchOut('flags');
+}
+
+function switchOut(tab){
+  const tabs=['flags','context','expert','figures','verdict'];
+  document.querySelectorAll('#mode-single .out-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
+  document.querySelectorAll('#mode-single .out-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+tab).classList.add('active');
+}
+
+// ── FOLLOW-UP QUESTIONS ──────────────────────────────────
+function askQuestionText(q){
+  document.getElementById('ask-input').value=q;
+  askQuestion();
+}
+
+async function askQuestion(){
+  const q=document.getElementById('ask-input').value.trim();
+  if(!q) return;
+  const apiKey=localStorage.getItem('anthropic_key');
+  if(!apiKey){alert('Please enter your API key.');return;}
+  const answerEl=document.getElementById('ask-answer');
+  answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-loading">Thinking...</div>`;
+  answerEl.classList.add('visible');
+
+  const paperText=window._currentPaperText||'';
+  const summary=window._currentPaperSummary||'';
+  const domain=window._currentDomain||'science';
+
+  try {
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({
+        model:'claude-opus-4-5',
+        max_tokens:800,
+        system:`You are a scientific research assistant answering questions about a specific paper. Answer based only on what is in the paper. Be specific and cite actual findings. If the paper doesn't contain enough information to answer, say so honestly. Write in clear prose, not JSON.`,
+        messages:[{role:'user',content:[{type:'text',text:`Domain: ${domain}
+
+PAPER TEXT:
+${paperText.substring(0,8000)}
+
+ANALYSIS SUMMARY:
+${summary.substring(0,1500)}
+
+Question: ${q}
+
+Give a focused, direct answer in 2-4 paragraphs.`}]}]
+      })
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error?.message||`HTTP ${res.status}`);
+    const text=data.content.map(b=>b.text||'').join('');
+    answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-answer-a">${text}</div>`;
+  } catch(e){
+    answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-answer-a" style="color:var(--red);">Error: ${e.message}</div>`;
+  }
+}
+
+// ── MULTI PAPER ANALYZE ──────────────────────────────────
+async function analyzeMulti(){
+  const apiKey=localStorage.getItem('anthropic_key');
+  if(!apiKey){alert('Please enter your Anthropic API key.');return;}
+  if(multiPapers.length<2){alert('Please add at least 2 papers to synthesize.');return;}
+
+  const domain=document.getElementById('multi-domain').value;
+  const focus=document.getElementById('multi-focus').value;
+  const topic=document.getElementById('multi-topic').value;
+  const analyzeFigures=document.getElementById('multi-analyze-figures').checked;
+
+  document.getElementById('multi-progress').style.display='block';
+  document.getElementById('multi-results').style.display='none';
+  document.getElementById('multi-error').style.display='none';
+  document.getElementById('multi-analyze-btn').disabled=true;
+  ['mstep-extract','mstep-individual','mstep-synthesize','mstep-gaps','mstep-output'].forEach(s=>setStep(s,''));
+
+  try {
+    // Step 1: Extract text from all papers (PDF or URL)
+    setStep('mstep-extract','active');
+    const paperContents=[];
+    for(const p of multiPapers){
+      updateStatus(`Extracting: ${p.name}`);
+      let content;
+      if(p.type==='url'){
+        content=await fetchURL(p.url);
+        content.images=[];
+      } else {
+        content=await extractPDFText(p.file);
+      }
+      paperContents.push({name:p.name, type:p.type||'pdf', text:content.text, images:content.images||[]});
+    }
+    setStep('mstep-extract','done');
+
+    // Step 2: Analyze each paper individually (lightweight pass)
+    setStep('mstep-individual','active');
+    const individualSummaries=[];
+    for(let i=0;i<paperContents.length;i++){
+      const pc=paperContents[i];
+      const userContent=[];
+      if(analyzeFigures) pc.images.slice(0,3).forEach(img=>userContent.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:img.data}}));
+      userContent.push({type:'text',text:`Analyze this paper for cross-paper synthesis. Domain: ${domain}.
+Paper name: ${pc.name}
+Text: ${pc.text.substring(0,8000)}
+
+Respond ONLY with JSON:
+{
+  "title":"inferred paper title",
+  "year":"publication year if found, else unknown",
+  "key_objective":"1 sentence",
+  "methods":["key analytical/experimental methods used"],
+  "key_findings":["3-5 most important findings with key numbers"],
+  "limitations":["2-3 main limitations"],
+  "compounds_studied":["specific compounds, chemicals, or biological entities studied"],
+  "conclusion_strength":"strong"|"moderate"|"weak",
+  "one_line_verdict":"frank one-sentence assessment",
+  "intro_background":"paragraph describing the larger problem, field context, and why this research matters",
+  "intro_state_of_art":"what prior research established and where it fell short",
+  "intro_gap":"precisely what was missing or unresolved that this study aimed to address",
+  "paper_questions":["3 questions tightly specific to THIS paper's actual findings and tensions — e.g. questioning a specific number, method choice, or claimed conclusion"]
+}`});
+      updateStatus(`Analyzing paper ${i+1} of ${paperContents.length}: ${pc.name}`);
+      const summary=await callClaude([{role:'user',content:userContent}],1000);
+      individualSummaries.push({...summary,filename:pc.name,paperIndex:i});
+      if(i < paperContents.length-1) await sleep(1500);
+    }
+    setStep('mstep-individual','done');
+
+    // Step 3: Cross-paper synthesis
+    setStep('mstep-synthesize','active');
+    setStep('mstep-gaps','active');
+    updateStatus('Running cross-paper synthesis...');
+
+    const focusInstr=focus==='methods'?'Focus especially on comparing analytical methods across papers.':focus==='findings'?'Focus especially on comparing and contrasting key findings.':focus==='gaps'?'Focus especially on identifying research gaps and conflicting evidence.':'Provide broad synthesis across all aspects.';
+
+    const synthPrompt=`You are synthesizing ${paperContents.length} scientific papers on the topic: "${topic || domain}".
+${focusInstr}
+
+IMPORTANT: Research gaps identified must be flagged as relative to the uploaded papers only. Other literature may have already addressed these gaps — note this caveat explicitly.
+
+INDIVIDUAL PAPER SUMMARIES:
+${individualSummaries.map((s,i)=>`
+Paper ${i+1}: ${s.filename}
+Title: ${s.title} (${s.year})
+Objective: ${s.key_objective}
+Methods: ${(s.methods||[]).join(', ')}
+Key findings: ${(s.key_findings||[]).join(' | ')}
+Compounds/entities: ${(s.compounds_studied||[]).join(', ')}
+Limitations: ${(s.limitations||[]).join(' | ')}
+Intro — state of art: ${s.intro_state_of_art||'—'}
+Intro — gap identified: ${s.intro_gap||'—'}
+Verdict: ${s.one_line_verdict}
+`).join('\n---\n')}
+
+FULL TEXT EXCERPTS:
+${paperContents.map((p,i)=>`\n=== Paper ${i+1} (${p.name}) ===\n${p.text.substring(0,3500)}`).join('\n')}
+
+Respond ONLY with this JSON:
+{
+  "expert_synthesis": "detailed 400+ word synthesis: what this body of literature collectively shows, how papers relate, where evidence is strong vs weak — for each major finding include what it means in practical context and what would change if it didn't replicate",
+  "intro_synthesis": "what the Introductions collectively tell us — what was known, what gaps existed, how each paper positioned itself",
+  "consensus_findings": [{"finding":"...","papers_supporting":"e.g. Papers 1,2,3","strength":"strong"|"moderate"|"preliminary"}],
+  "conflicts": [{"claim":"...","paper_a":"Paper N says...","paper_b":"Paper M says...","possible_explanation":"..."}],
+  "methods_comparison": [{"method":"...","used_in":"Papers X,Y","strengths":"...","limitations":"..."}],
+  "research_gaps": [{"gap":"...","why_it_matters":"...","suggested_approach":"...","caveat":"whether this gap may already be addressed in literature not uploaded here","pubmed_search":"3-5 word conceptual search query using common terms a non-expert could search verbatim and get results — avoid highly specific jargon"}],
+  "field_trajectory": "2-3 sentences on where this field is heading",
+  "strongest_paper": "which paper has strongest methodology and why",
+  "key_compounds_summary": "summary of what is known about the specific compounds/entities across papers",
+  "knowledge_boundaries": "2-3 sentences on what this set of papers fundamentally cannot tell us — what external literature or data would be needed to complete the picture",
+  "suggested_questions": ["4 questions tightly specific to actual findings and tensions across these papers — e.g. 'Paper 2 finds X but Paper 4 finds Y — which methodology is more reliable and why?', not generic questions"]
+}`;
+
+    const synthesis=await callClaude([{role:'user',content:[{type:'text',text:synthPrompt}]}],4000);
+    setStep('mstep-synthesize','done'); setStep('mstep-gaps','done'); setStep('mstep-output','done');
+    renderMultiResults(synthesis,individualSummaries);
+
+  } catch(e){
+    console.error(e);
+    document.getElementById('multi-progress').style.display='none';
+    showError('multi-error', e.message);
+  } finally {
+    document.getElementById('multi-analyze-btn').disabled=false;
+    document.getElementById('multi-progress').style.display='none';
+  }
+}
+
+function renderMultiResults(s, summaries){
+  // Synthesis tab
+  document.getElementById('msynth-content').textContent=s.expert_synthesis||'Not generated.';
+
+  // Context & background tab
+  document.getElementById('mcontext-content').innerHTML=`
+    <p style="font-size:13px;color:var(--muted);margin-bottom:1rem;">What the Introductions across all papers collectively tell us about the state of the field.</p>
+    ${s.intro_synthesis?`<div class="context-block state-of-art"><div class="context-label">Field context across papers</div><div class="context-text">${s.intro_synthesis}</div></div>`:''}
+    <div class="synth-section" style="margin-top:1.5rem;">
+      <div class="synth-section-title">Per-paper introduction context</div>
+      ${summaries.map((sm,i)=>`
+        <div style="margin-bottom:1.25rem;padding-bottom:1.25rem;border-bottom:1px solid var(--border);">
+          <div style="margin-bottom:.5rem;"><div class="paper-badge" style="display:inline;">Paper ${i+1}</div> <span style="font-size:13px;font-weight:500;">${sm.title||sm.filename}</span></div>
+          ${sm.intro_background?`<div style="font-size:14px;line-height:1.7;color:var(--text);margin-bottom:.5rem;">${sm.intro_background}</div>`:''}
+          ${sm.intro_state_of_art?`<div style="font-size:13px;color:var(--muted);margin-top:4px;"><strong>Prior research established:</strong> ${sm.intro_state_of_art}</div>`:''}
+          ${sm.intro_gap?`<div style="font-size:13px;color:var(--muted);margin-top:4px;"><strong>Gap identified:</strong> ${sm.intro_gap}</div>`:''}
+        </div>`).join('')}
+    </div>`;
+
+  // Consensus & conflicts tab
+  document.getElementById('mconsensus-content').innerHTML=`
+    <div class="synth-section">
+      <div class="synth-section-title">Points of consensus</div>
+      ${(s.consensus_findings||[]).map(c=>`<div class="consensus-item">
+        <strong>${c.finding}</strong>
+        <br><span style="font-size:13px;color:var(--muted);">Supported by: ${c.papers_supporting} · Strength: ${c.strength}</span>
+      </div>`).join('')||'<p style="color:var(--hint);font-size:14px;">None identified.</p>'}
+    </div>
+    <div class="synth-section">
+      <div class="synth-section-title">Conflicts and contradictions</div>
+      ${(s.conflicts||[]).map(c=>`<div class="conflict-item"><strong>${c.claim}</strong><br><span style="font-size:13px;">${c.paper_a}</span><br><span style="font-size:13px;">${c.paper_b}</span>${c.possible_explanation?`<br><span style="font-size:12px;color:var(--hint);">Possible explanation: ${c.possible_explanation}</span>`:''}</div>`).join('')||'<p style="color:var(--hint);font-size:14px;">No direct conflicts identified.</p>'}
+    </div>
+    ${s.key_compounds_summary?`<div class="synth-section"><div class="synth-section-title">Compounds & entities — what we know</div><div style="font-size:14px;line-height:1.7;">${s.key_compounds_summary}</div></div>`:''}`;
+
+  // Methods tab
+  document.getElementById('mmethods-content').innerHTML=`
+    <div class="synth-section">
+      <div class="synth-section-title">Analytical methods across papers</div>
+      ${(s.methods_comparison||[]).map(m=>`<div class="method-item"><strong>${m.method}</strong> <span style="font-size:12px;color:var(--muted);">${m.used_in}</span><br><span style="font-size:13px;">✓ ${m.strengths}</span><br><span style="font-size:13px;color:var(--muted);">⚠ ${m.limitations}</span></div>`).join('')||'<p style="color:var(--hint);font-size:14px;">No methods data extracted.</p>'}
+    </div>
+    ${s.strongest_paper?`<div style="padding:1rem;background:var(--accent-light);border-radius:8px;margin-top:1rem;font-size:14px;"><strong>Strongest methodology:</strong> ${s.strongest_paper}</div>`:''}`;
+
+  // Gaps tab — with search buttons and knowledge boundaries
+  const gapCaveatNote=`<div style="padding:.75rem 1rem;background:var(--amber-bg);border-radius:8px;margin-bottom:1rem;font-size:13px;color:var(--amber);border-left:3px solid #C87A00;"><strong>Note:</strong> Gaps identified here are relative to the uploaded papers only. Other literature not included in this analysis may have already addressed some of these gaps.</div>`;
+  document.getElementById('mgaps-content').innerHTML=gapCaveatNote+`
+    <div class="synth-section">
+      <div class="synth-section-title">Research gaps identified</div>
+      ${(s.research_gaps||[]).map(g=>`
+        <div class="gap-item">
+          <strong>${g.gap}</strong><br>
+          <span style="font-size:13px;color:var(--muted);">Why it matters: ${g.why_it_matters}</span>
+          ${g.suggested_approach?`<br><span style="font-size:13px;">Suggested approach: ${g.suggested_approach}</span>`:''}
+          ${g.caveat?`<br><span style="font-size:12px;color:var(--amber);font-style:italic;">⚠ ${g.caveat}</span>`:''}
+          ${g.pubmed_search?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <a href="https://scholar.google.com/scholar?q=${encodeURIComponent(g.pubmed_search)}" target="_blank" class="search-link">Google Scholar ↗</a>
+            <a href="https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(g.pubmed_search)}" target="_blank" class="search-link" style="opacity:.6;font-size:11px;">PubMed ↗</a>
+            <span style="font-size:12px;color:var(--hint);">Search: "${g.pubmed_search}"</span>
+          </div>`:''}
+        </div>`).join('')||'<p style="color:var(--hint);font-size:14px;">No gaps identified.</p>'}
+    </div>
+    ${s.field_trajectory?`<div style="padding:1rem;background:var(--blue-bg);border-radius:8px;margin-top:1rem;font-size:14px;border-left:3px solid #2A5A9A;"><strong>Field trajectory:</strong> ${s.field_trajectory}</div>`:''}
+    ${s.knowledge_boundaries?`<div style="padding:1rem;background:var(--blue-bg);border-radius:8px;margin-top:1rem;font-size:14px;border-left:3px solid #2A5A9A;"><strong>What these papers cannot tell us:</strong> ${s.knowledge_boundaries}</div>`:''}`;
+
+  // Individual papers tab — with inline per-paper ask boxes
+  // Store per-paper text for inline ask
+  window._multiPaperData = summaries.map((sm,i)=>({
+    title: sm.title||sm.filename,
+    findings: (sm.key_findings||[]).join(' | '),
+    filename: sm.filename
+  }));
+
+  document.getElementById('mpapers-content').innerHTML=summaries.map((sm,i)=>`
+    <div class="paper-summary-card" style="margin-bottom:1.25rem;">
+      <div class="paper-summary-title">Paper ${i+1}: ${sm.title||sm.filename}</div>
+      <div style="font-size:12px;color:var(--hint);margin-bottom:.75rem;font-family:'DM Mono',monospace;">${sm.filename}</div>
+      <div class="paper-summary-body">
+        <strong>Objective:</strong> ${sm.key_objective||'—'}<br>
+        <strong>Methods:</strong> ${(sm.methods||[]).join(', ')||'—'}<br>
+        <strong>Key findings:</strong><br>${(sm.key_findings||[]).map(f=>`• ${f}`).join('<br>')}<br>
+        <strong>Limitations:</strong> ${(sm.limitations||[]).join('; ')||'—'}<br>
+        <strong>Verdict:</strong> <em>${sm.one_line_verdict||'—'}</em>
+      </div>
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
+        <div style="font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:.6rem;">Ask about this paper</div>
+        ${(sm.paper_questions||[]).length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:.75rem;">${(sm.paper_questions||[]).map(q=>`<button class="suggested-q" style="font-size:12px;" onclick="askPaperQuestion(${i},this.textContent)">${q}</button>`).join('')}</div>`:''}
+        <div class="ask-input-row">
+          <input type="text" id="paper-ask-input-${i}" placeholder="Ask anything about this paper..." onkeydown="if(event.key==='Enter') askPaperQuestion(${i},document.getElementById('paper-ask-input-${i}').value)" />
+          <button class="ask-send-btn" onclick="askPaperQuestion(${i},document.getElementById('paper-ask-input-${i}').value)">Ask</button>
+        </div>
+        <div id="paper-ask-answer-${i}" class="ask-answer"></div>
+      </div>
+    </div>`).join('');
+
+  // Store context for follow-up questions
+  window._multiSynthesisText = s.expert_synthesis||'';
+  window._multiPaperTexts = summaries.map(sm=>`${sm.title||sm.filename}: ${(sm.key_findings||[]).join(' | ')}`).join('\n');
+  window._multiDomain = document.getElementById('multi-domain').value;
+  window._multiTopic = document.getElementById('multi-topic').value;
+
+  // Synthesis-level suggested questions
+  const mQs=s.suggested_questions||[];
+  document.getElementById('multi-suggested-qs').innerHTML=mQs.map(q=>
+    `<button class="suggested-q" onclick="askMultiQuestionText(this.textContent)">${q}</button>`
+  ).join('');
+  document.getElementById('multi-ask-panel').style.display='block';
+  document.getElementById('multi-ask-answer').classList.remove('visible');
+  document.getElementById('multi-ask-answer').innerHTML='';
+  document.getElementById('multi-ask-input').value='';
+
+  document.getElementById('multi-results').style.display='block';
+  switchMultiOut('synthesis');
+}
+
+function switchMultiOut(tab){
+  const tabs=['synthesis','context','consensus','methods','gaps','papers'];
+  document.querySelectorAll('#mode-multi .out-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
+  document.querySelectorAll('#mode-multi .out-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('mpanel-'+tab).classList.add('active');
+}
+
+// ── MULTI FOLLOW-UP QUESTIONS ────────────────────────────
+function askMultiQuestionText(q){
+  document.getElementById('multi-ask-input').value=q;
+  askMultiQuestion();
+}
+
+async function askPaperQuestion(paperIndex, q){
+  q=(q||'').trim();
+  if(!q) return;
+  const apiKey=localStorage.getItem('anthropic_key');
+  if(!apiKey){alert('Please enter your API key.');return;}
+  const inputEl=document.getElementById(`paper-ask-input-${paperIndex}`);
+  const answerEl=document.getElementById(`paper-ask-answer-${paperIndex}`);
+  if(inputEl) inputEl.value=q;
+  answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-loading">Thinking...</div>`;
+  answerEl.classList.add('visible');
+
+  const paperData=(window._multiPaperData||[])[paperIndex]||{};
+  const synthText=(window._multiSynthesisText||'').substring(0,2000);
+
+  try {
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({
+        model:'claude-opus-4-5',
+        max_tokens:700,
+        system:`You are answering a question about a specific paper in a multi-paper synthesis. Answer based on what is known about this paper from the synthesis context. Be specific and direct. If the information isn't available, say so. Write in clear prose.`,
+        messages:[{role:'user',content:[{type:'text',text:`Paper: ${paperData.title||'Unknown'}
+Key findings: ${paperData.findings||'—'}
+Synthesis context: ${synthText}
+Domain: ${window._multiDomain||'science'}
+
+Question about this specific paper: ${q}
+
+Answer in 2-3 focused paragraphs.`}]}]
+      })
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error?.message||`HTTP ${res.status}`);
+    const text=data.content.map(b=>b.text||'').join('');
+    answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-answer-a">${text}</div>`;
+  } catch(e){
+    answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-answer-a" style="color:var(--red);">Error: ${e.message}</div>`;
+  }
+}
+
+async function askMultiQuestion(){
+  const q=document.getElementById('multi-ask-input').value.trim();
+  if(!q) return;
+  const apiKey=localStorage.getItem('anthropic_key');
+  if(!apiKey){alert('Please enter your API key.');return;}
+  const answerEl=document.getElementById('multi-ask-answer');
+  answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-loading">Thinking...</div>`;
+  answerEl.classList.add('visible');
+
+  try {
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({
+        model:'claude-opus-4-5',
+        max_tokens:800,
+        system:`You are a scientific research assistant answering questions about a synthesis of multiple papers. Answer based only on what is in the papers provided. Be specific, cite which papers support which claims. If the papers don't contain enough to answer fully, say so. Write in clear prose.`,
+        messages:[{role:'user',content:[{type:'text',text:`Topic: ${window._multiTopic||window._multiDomain||'science'}
+Domain: ${window._multiDomain||'science'}
+
+SYNTHESIS SUMMARY:
+${(window._multiSynthesisText||'').substring(0,5000)}
+
+INDIVIDUAL PAPER FINDINGS:
+${window._multiPaperTexts||''}
+
+Question: ${q}
+
+Give a focused, direct answer in 2-4 paragraphs, citing specific papers where relevant.`}]}]
+      })
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error?.message||`HTTP ${res.status}`);
+    const text=data.content.map(b=>b.text||'').join('');
+    answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-answer-a">${text}</div>`;
+  } catch(e){
+    answerEl.innerHTML=`<div class="ask-answer-q">"${q}"</div><div class="ask-answer-a" style="color:var(--red);">Error: ${e.message}</div>`;
+  }
+}
+
+function copyText(id){
+  navigator.clipboard.writeText(document.getElementById(id).textContent).then(()=>alert('Copied to clipboard.'));
+}
+
+// ── PAPER DISCOVERY ENGINE ───────────────────────────────
+let discoverAllResults = [];
+let discoverSelected = new Set(); // indices of selected papers
+
+async function discoverPapers(){
+  const query = document.getElementById('discover-query').value.trim();
+  if(!query){ alert('Please enter a topic or question.'); return; }
+
+  const yearsBack = parseInt(document.getElementById('discover-years').value);
+  const limit = parseInt(document.getElementById('discover-limit').value);
+
+  discoverAllResults = [];
+  discoverSelected.clear();
+  document.getElementById('discover-results').style.display='none';
+  document.getElementById('discover-error').style.display='none';
+  document.getElementById('discover-send-btn').style.display='none';
+
+  const statusEl = document.getElementById('discover-status');
+  statusEl.style.display='block';
+  statusEl.textContent = 'Connecting to Europe PMC and Semantic Scholar...';
+
+  // Run all three searches independently
+  const [epmcSettled, ssSettled, pmSettled] = await Promise.allSettled([
+    searchEuropePMC(query, yearsBack, Math.ceil(limit*0.6)),
+    searchSemanticScholar(query, yearsBack, Math.ceil(limit*0.6)),
+    searchPubMed(query, yearsBack, Math.ceil(limit*0.3))
+  ]);
+
+  const epmc = epmcSettled.status==='fulfilled' ? epmcSettled.value : [];
+  const ss = ssSettled.status==='fulfilled' ? ssSettled.value : [];
+  const pm = pmSettled.status==='fulfilled' ? pmSettled.value : [];
+  const epmcError = epmcSettled.status==='rejected' ? epmcSettled.reason?.message : null;
+  const ssError = ssSettled.status==='rejected' ? ssSettled.reason?.message : null;
+  const pmError = pmSettled.status==='rejected' ? pmSettled.reason?.message : null;
+
+  const sourceStatus = [];
+  if(epmc.length>0) sourceStatus.push(`Europe PMC: ${epmc.length}`);
+  else if(epmcError) sourceStatus.push(`Europe PMC: failed`);
+  if(ss.length>0) sourceStatus.push(`Semantic Scholar: ${ss.length}`);
+  else if(ssError) sourceStatus.push(`Semantic Scholar: failed`);
+  if(pm.length>0) sourceStatus.push(`PubMed: ${pm.length}`);
+  else if(pmError) sourceStatus.push(`PubMed: failed`);
+
+  console.log('Discovery results:', sourceStatus.join(' | '));
+
+  const bothFailed = epmcError && ssError && pmError;
+  const totalResults = epmc.length + ss.length + pm.length;
+
+  statusEl.style.display='none';
+
+  if(bothFailed){
+    // Both APIs actually errored — show fallback
+    showDiscoverFallback(query, `${ssError} / ${pmError}`);
+    return;
+  }
+
+  if(totalResults === 0){
+    // APIs worked but no results — show helpful message not an error
+    const errEl = document.getElementById('discover-error');
+    errEl.style.display='block';
+    errEl.innerHTML=`<strong>No papers found</strong> for "${query}" in the selected time range.<br>
+      <span style="font-size:13px;">Try: broader search terms, a longer time range, or "All time". ${sourceStatus.join(' · ')}</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.75rem;">
+        <a href="https://scholar.google.com/scholar?q=${encodeURIComponent(query)}" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">Try Google Scholar ↗</a>
+        <a href="https://www.semanticscholar.org/search?q=${encodeURIComponent(query)}&sort=Relevance" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">Try Semantic Scholar ↗</a>
+      </div>`;
+    return;
+  }
+
+  discoverAllResults = mergeResults([...epmc, ...ss, ...pm]);
+  document.getElementById('discover-results').style.display='block';
+  renderDiscoverResults();
+}
+
+function showDiscoverFallback(query, errorDetail=''){
+  const hosted = isHosted();
+  const errEl = document.getElementById('discover-error');
+  errEl.style.display='block';
+  errEl.innerHTML=`
+    <strong>${hosted ? 'Search API unavailable' : 'Open the hosted version to enable search'}.</strong><br>
+    <span style="font-size:13px;opacity:.9;">${hosted
+      ? `The Semantic Scholar and PubMed APIs could not be reached.${errorDetail?' ('+errorDetail+')':''} Try again in a moment, or use the links below to find papers manually.`
+      : 'API search is blocked when opening the file locally. Open the tool from your GitHub Pages URL instead, or use the links below to find papers manually and paste their URLs into the Multi-paper synthesis tab.'
+    }</span>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:.75rem;">
+      <a href="https://scholar.google.com/scholar?q=${encodeURIComponent(query)}" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">Google Scholar ↗</a>
+      <a href="https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(query)}&filter=simsearch2.ffrft" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">PubMed (open access) ↗</a>
+      <a href="https://www.semanticscholar.org/search?q=${encodeURIComponent(query)}&sort=Relevance" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">Semantic Scholar ↗</a>
+      <a href="https://europepmc.org/search?query=${encodeURIComponent(query)}" target="_blank" class="search-link" style="font-size:13px;padding:6px 14px;">Europe PMC ↗</a>
+    </div>
+    <div style="margin-top:.75rem;font-size:13px;color:var(--muted);">Once you find papers, copy their URLs and paste them into <strong>Multi-paper synthesis → Add URL</strong>.</div>`;
+}
+
+async function fetchJSON(url){
+  // Try direct fetch first
+  try {
+    const res = await fetch(url);
+    if(res.ok){
+      const data = await res.json();
+      return data;
+    }
+  } catch(e){ /* fall through */ }
+
+  // Try allorigins proxy
+  try {
+    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+    if(res.ok){
+      const wrapper = await res.json();
+      return JSON.parse(wrapper.contents);
+    }
+  } catch(e){ /* fall through */ }
+
+  throw new Error('Could not reach API');
+}
+
+function isHosted(){
+  return location.protocol === 'https:' || location.protocol === 'http:';
+}
+
+async function searchEuropePMC(query, yearsBack, limit){
+  const yearFilter = yearsBack > 0 ? ` AND FIRST_PDATE:[${new Date().getFullYear()-yearsBack}-01-01 TO ${new Date().getFullYear()}-12-31]` : '';
+  // Use relevance sort, not citation sort — citation sort returns unrelated high-cited papers
+  const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query+yearFilter)}&resultType=core&pageSize=${Math.min(limit,25)}&format=json&sort=RELEVANCE`;
+
+  const data = await fetchJSON(url);
+  return (data.resultList?.result||[]).map(p=>({
+    source: 'europe_pmc',
+    title: p.title||'Untitled',
+    year: p.pubYear||'?',
+    authors: p.authorString ? p.authorString.substring(0,80)+(p.authorString.length>80?'...':'') : '—',
+    citations: p.citedByCount||0,
+    venue: p.journalTitle||p.bookTitle||'',
+    isOpenAccess: p.isOpenAccess==='Y',
+    pdfUrl: p.pmcid ? `https://europepmc.org/articles/${p.pmcid}/pdf/` : null,
+    doi: p.doi||null,
+    pmid: p.pmid||null,
+    abstract: p.abstractText||'',
+    pmcId: p.pmcid||null,
+    epmc_id: p.id||null
+  }));
+}
+
+async function searchSemanticScholar(query, yearsBack, limit){
+  const yearFilter = yearsBack > 0 ? `&year=${new Date().getFullYear()-yearsBack}-` : '';
+  const fields = 'title,year,citationCount,authors,publicationVenue,isOpenAccess,openAccessPdf,externalIds,abstract';
+  // Sort by relevance — let the API rank by match quality, not raw citation count
+  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${Math.min(limit,50)}&fields=${fields}${yearFilter}`;
+
+  const data = await fetchJSON(url);
+  return (data.data||[]).map(p=>({
+    source: 'semantic_scholar',
+    title: p.title||'Untitled',
+    year: p.year||'?',
+    authors: (p.authors||[]).slice(0,3).map(a=>a.name).join(', ') + ((p.authors||[]).length>3?' et al.':''),
+    citations: p.citationCount||0,
+    venue: p.publicationVenue?.name||'',
+    isOpenAccess: p.isOpenAccess||false,
+    pdfUrl: p.openAccessPdf?.url||null,
+    doi: p.externalIds?.DOI||null,
+    pmid: p.externalIds?.PubMed||null,
+    abstract: p.abstract||'',
+    ssId: p.paperId||null
+  }));
+}
+
+async function searchPubMed(query, yearsBack, limit){
+  const oaFilter = '&filter=simsearch2.ffrft';
+  const dateFilter = yearsBack > 0 ? `&datetype=pdat&reldate=${yearsBack*365}` : '';
+  const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=${Math.min(limit*2,100)}&retmode=json&sort=relevance${dateFilter}${oaFilter}`;
+
+  const searchData = await fetchJSON(searchUrl);
+  const pmids = searchData.esearchresult?.idlist||[];
+  if(pmids.length===0) return [];
+
+  const summaryUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${pmids.join(',')}&retmode=json`;
+  const summaryData = await fetchJSON(summaryUrl);
+
+  return pmids.map(pmid=>{
+    const p = summaryData.result?.[pmid];
+    if(!p) return null;
+    const authors = (p.authors||[]).slice(0,3).map(a=>a.name).join(', ') + ((p.authors||[]).length>3?' et al.':'');
+    const hasPMC = !!(p.pmc);
+    return {
+      source: 'pubmed',
+      title: p.title||'Untitled',
+      year: p.pubdate?.substring(0,4)||'?',
+      authors,
+      citations: 0,
+      venue: p.source||'',
+      isOpenAccess: hasPMC,
+      pdfUrl: hasPMC ? `https://www.ncbi.nlm.nih.gov/pmc/articles/${p.pmc}/pdf/` : null,
+      doi: p.articleids?.find(a=>a.idtype==='doi')?.value||null,
+      pmid,
+      abstract: '',
+      pmcId: p.pmc||null
+    };
+  }).filter(Boolean);
+}
+
+function mergeResults(allResults){
+  const seen = new Set();
+  const merged = [];
+  for(const p of allResults){
+    const key = (p.title||'').toLowerCase().replace(/[^a-z0-9]/g,'').substring(0,35);
+    if(key && !seen.has(key)){
+      seen.add(key);
+      merged.push(p);
+    }
+  }
+  return merged;
+}
+
+function renderDiscoverResults(){
+  const oaOnly = document.getElementById('discover-oa-only').checked;
+  const sort = document.getElementById('discover-sort').value;
+
+  let results = [...discoverAllResults];
+  if(oaOnly) results = results.filter(p=>p.isOpenAccess || p.pdfUrl || p.pmcId || p.ssId);
+
+  if(sort==='citations') results.sort((a,b)=>b.citations-a.citations);
+  else if(sort==='year') results.sort((a,b)=>parseInt(b.year||0)-parseInt(a.year||0));
+  // relevance = original order
+
+  const label = document.getElementById('discover-results-label');
+  label.innerHTML = `<span>${results.length} papers found</span>${discoverSelected.size>0?` · <span class="selected-count">${discoverSelected.size} selected</span>`:''}`;
+
+  const maxCitations = Math.max(...results.map(p=>p.citations||0), 1);
+
+  document.getElementById('discover-papers-list').innerHTML = results.map((p,i)=>{
+    const origIdx = discoverAllResults.indexOf(p);
+    const isSelected = discoverSelected.has(origIdx);
+    const credScore = Math.min(100, Math.round((p.citations/maxCitations)*80 + (p.isOpenAccess?20:0)));
+    const canAccess = p.isOpenAccess||p.pdfUrl||p.pmcId;
+
+    return `<div class="discover-paper${isSelected?' selected':''}" id="dp-${origIdx}">
+      <div class="discover-paper-header">
+        <input type="checkbox" class="discover-checkbox" ${isSelected?'checked':''} ${!canAccess?'disabled title="No open access version available"':''}
+          onchange="toggleSelectPaper(${origIdx},this.checked)" />
+        <div style="flex:1;min-width:0;">
+          <div class="discover-title" onclick="toggleAbstract(${origIdx})">${p.title}</div>
+          <div class="discover-meta">
+            <span class="discover-badge badge-year">${p.year}</span>
+            ${p.citations>0?`<span class="discover-badge badge-citations">📊 ${p.citations.toLocaleString()} citations</span>`:''}
+            ${canAccess?`<span class="discover-badge badge-oa">Open access</span>`:`<span class="discover-badge badge-no-oa">Paywalled</span>`}
+            ${p.venue?`<span class="discover-badge badge-venue">${p.venue.substring(0,35)}${p.venue.length>35?'...':''}</span>`:''}
+          </div>
+          ${p.authors?`<div class="discover-authors">${p.authors}</div>`:''}
+          <div class="credibility-bar">
+            <span class="credibility-label">Credibility</span>
+            <div class="credibility-track"><div class="credibility-fill" style="width:${credScore}%"></div></div>
+            <span style="font-size:11px;color:var(--hint);">${credScore}%</span>
+          </div>
+          ${p.abstract?`<div class="discover-abstract" id="abs-${origIdx}">${p.abstract.substring(0,500)}${p.abstract.length>500?'...':''}</div>`:''}
+          <div class="discover-actions">
+            ${p.abstract?`<button class="discover-toggle" onclick="toggleAbstract(${origIdx})" id="abt-${origIdx}">Show abstract</button>`:''}
+            ${p.doi?`<a href="https://doi.org/${p.doi}" target="_blank" class="discover-link">DOI ↗</a>`:''}
+            ${p.pmid?`<a href="https://pubmed.ncbi.nlm.nih.gov/${p.pmid}" target="_blank" class="discover-link">PubMed ↗</a>`:''}
+            ${p.pdfUrl?`<a href="${p.pdfUrl}" target="_blank" class="discover-link">PDF ↗</a>`:''}
+            <a href="https://scholar.google.com/scholar?q=${encodeURIComponent(p.title)}" target="_blank" class="discover-link">Scholar ↗</a>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<p style="color:var(--hint);font-size:14px;padding:1rem;">No results match the current filters.</p>';
+}
+
+function toggleAbstract(idx){
+  const el = document.getElementById(`abs-${idx}`);
+  const btn = document.getElementById(`abt-${idx}`);
+  if(!el) return;
+  el.classList.toggle('expanded');
+  if(btn) btn.textContent = el.classList.contains('expanded') ? 'Hide abstract' : 'Show abstract';
+}
+
+function toggleSelectPaper(idx, checked){
+  if(discoverAllResults.length > 6 && checked && discoverSelected.size >= 6){
+    alert('Maximum 6 papers can be selected for synthesis.');
+    document.querySelector(`#dp-${idx} .discover-checkbox`).checked=false;
+    return;
+  }
+  if(checked) discoverSelected.add(idx);
+  else discoverSelected.delete(idx);
+
+  const card = document.getElementById(`dp-${idx}`);
+  if(card) card.classList.toggle('selected', checked);
+
+  // Update label and send button
+  const label = document.getElementById('discover-results-label');
+  const totalShown = document.getElementById('discover-papers-list').querySelectorAll('.discover-paper').length;
+  label.innerHTML = `<span>${totalShown} papers found</span>${discoverSelected.size>0?` · <span class="selected-count">${discoverSelected.size} selected</span>`:''}`;
+
+  const sendBtn = document.getElementById('discover-send-btn');
+  sendBtn.style.display = discoverSelected.size >= 2 ? 'block' : 'none';
+  sendBtn.textContent = `Analyze ${discoverSelected.size} selected papers in synthesis ↗`;
+}
+
+function sendSelectedToSynthesis(){
+  const selected = [...discoverSelected].map(i=>discoverAllResults[i]);
+  if(selected.length < 2){ alert('Please select at least 2 papers.'); return; }
+
+  // Add as URL papers to multi-paper queue
+  const urlPapers = selected.filter(p=>p.pdfUrl||p.pmid||p.doi);
+  if(urlPapers.length === 0){ alert('No open-access URLs available for the selected papers.'); return; }
+
+  // Clear existing queue and add selected
+  multiPapers = urlPapers.map(p=>{
+    const url = p.pdfUrl
+      || (p.pmid ? `https://pubmed.ncbi.nlm.nih.gov/${p.pmid}` : null)
+      || (p.doi ? `https://doi.org/${p.doi}` : null);
+    return { name: p.title.substring(0,70)+'...', type:'url', url };
+  });
+
+  // Set topic from query
+  const query = document.getElementById('discover-query').value.trim();
+  document.getElementById('multi-topic').value = query;
+
+  renderPaperQueue();
+  switchMode('multi');
+
+  // Scroll to top
+  window.scrollTo({top:0,behavior:'smooth'});
+
+  setTimeout(()=>alert(`${multiPapers.length} papers added to synthesis queue. Review the settings and click "Synthesize papers" when ready.`), 300);
+}
+</script>
+</body>
+</html>
