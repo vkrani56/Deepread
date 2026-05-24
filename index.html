@@ -1440,11 +1440,11 @@ async function searchEuropePMC(query, yearsBack, limit){
   const yearFilter = yearsBack > 0 ? ` AND (PUB_YEAR:[${currentYear-yearsBack} TO ${currentYear}])` : '';
   const fullQuery = query + yearFilter;
 
-  let data = await serverSearch('europe_pmc', { query: fullQuery, limit });
+  let data = await serverSearch('europe_pmc', { query: fullQuery, base_query: query, limit });
   let results = data.resultList?.result||[];
 
   if(results.length === 0 && yearsBack > 0){
-    data = await serverSearch('europe_pmc', { query, limit });
+    data = await serverSearch('europe_pmc', { query, base_query: query, limit });
     results = data.resultList?.result||[];
   }
 
