@@ -1356,11 +1356,14 @@ async function discoverPapers(){
 
   const sourceStatus = [];
   if(epmc.length>0) sourceStatus.push(`Europe PMC: ${epmc.length}`);
-  else if(epmcError) sourceStatus.push(`Europe PMC: failed`);
+  else if(epmcError) sourceStatus.push(`Europe PMC: FAILED (${epmcError})`);
+  else sourceStatus.push(`Europe PMC: 0 results`);
   if(ss.length>0) sourceStatus.push(`Semantic Scholar: ${ss.length}`);
-  else if(ssError) sourceStatus.push(`Semantic Scholar: failed`);
+  else if(ssError) sourceStatus.push(`Semantic Scholar: FAILED (${ssError})`);
+  else sourceStatus.push(`Semantic Scholar: 0 results`);
   if(pm.length>0) sourceStatus.push(`PubMed: ${pm.length}`);
-  else if(pmError) sourceStatus.push(`PubMed: failed`);
+  else if(pmError) sourceStatus.push(`PubMed: FAILED (${pmError})`);
+  else sourceStatus.push(`PubMed: 0 results`);
 
   console.log('Discovery results:', sourceStatus.join(' | '));
 
@@ -1425,13 +1428,23 @@ async function fetchJSON(url){
 
 async function serverSearch(action, params){
   const pw = sessionPassword || sessionStorage.getItem('dr_password') || '';
-  const res = await fetch(API_ENDPOINT, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ action, password: pw, ...params })
-  });
-  if(!res.ok) throw new Error(`Search error ${res.status}`);
-  return await res.json();
+  try {
+    const res = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action, password: pw, ...params })
+    });
+    const data = await res.json();
+    if(!res.ok) {
+      console.error(`serverSearch ${action} HTTP ${res.status}:`, data);
+      throw new Error(`Search error ${res.status}: ${data.error||'unknown'}`);
+    }
+    if(data.error) console.warn(`serverSearch ${action} returned error:`, data.error);
+    return data;
+  } catch(e) {
+    console.error(`serverSearch ${action} failed:`, e.message);
+    throw e;
+  }
 }
 
 function isHosted(){
@@ -1440,17 +1453,15 @@ function isHosted(){
 
 async function searchEuropePMC(query, yearsBack, limit){
   const currentYear = new Date().getFullYear();
-  const yearFilter = yearsBack > 0 ? ` AND (PUB_YEAR:[${currentYear-yearsBack} TO ${currentYear}])` : '';
-  const fullQuery = query + yearFilter;
-
-  let data = await serverSearch('europe_pmc', { query: fullQuery, base_query: query, limit });
-  let results = data.resultList?.result||[];
-
-  if(results.length === 0 && yearsBack > 0){
-    data = await serverSearch('europe_pmc', { query, base_query: query, limit });
-    results = data.resultList?.result||[];
-  }
-
+  // Pass year range as separate field so server can handle it cleanly
+  const yearFrom = yearsBack > 0 ? currentYear - yearsBack : null;
+  const data = await serverSearch('europe_pmc', { 
+    query, 
+    year_from: yearFrom,
+    year_to: currentYear,
+    limit 
+  });
+  const results = data.resultList?.result||[];
   return results.map(p=>({
     source: 'europe_pmc',
     title: p.title||'Untitled',
